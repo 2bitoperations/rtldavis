@@ -24,3 +24,6 @@ _testmain.go
 *.prof
 
 data
+/.venv/
+**/__pycache__/
+uv.lock
