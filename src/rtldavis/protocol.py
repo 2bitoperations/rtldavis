@@ -3,6 +3,7 @@ import math
 import random
 from enum import Enum
 from typing import List, NamedTuple, Dict, Set, Optional
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -23,7 +24,8 @@ class Sensor(Enum):
     RAIN = 0xE
 
 
-class Message(NamedTuple):
+@dataclass
+class Message:
     packet: dsp.Packet
     id: int
     sensor: Optional[Sensor]

@@ -15,36 +15,28 @@ The primary objective is to re-implement the functionality of the original Go-ba
 -   **Environment Management**: All development and execution will use the `uv` package and environment manager.
 -   **Coding Standards**: The codebase will adhere to modern Python best practices, including clear, readable, and maintainable code.
 
-## Roadmap for Porting from Go
+## Project Status
 
-The porting process will be staged to ensure a structured and manageable transition. The following roadmap is based on the structure of the original Go application:
+The initial port of the `rtldavis` application from Go to Python is substantially complete. The core functionality, including signal processing, protocol decoding, and data parsing, has been successfully translated.
+
+The current focus is on integrating the application with Home Assistant using the MQTT protocol.
+
+## Home Assistant MQTT Integration Learnings
+
+-   **Discovery Protocol**: Home Assistant's MQTT integration uses a discovery protocol to automatically configure devices. To be discovered, a sensor must have a configuration payload published to a specific topic, typically `homeassistant/sensor/<unique_id>/config`.
+-   **Configuration Payload**: This payload is a JSON object that defines the sensor's properties, such as its name, device class, unit of measurement, and state topic.
+-   **State Topic**: The `state_topic` specified in the configuration payload tells Home Assistant where to listen for the sensor's state updates. A common pattern is to use a shared state topic for a device (e.g., `rtldavis/<station_id>/state`) and use a `value_template` to extract the relevant value for each sensor.
+-   **Device Registry**: To group sensors under a single device in Home Assistant, the configuration payload should include a `device` object with a unique identifier.
+
+## Roadmap
 
 1.  **Initial Setup & Device Enumeration (Done)**
-    -   Set up the Python project with `pyproject.toml`.
-    -   Add initial dependencies, including `pyrtlsdr`.
-    -   Implement basic RTL-SDR device enumeration to confirm hardware detection.
-
-2.  **Port the Digital Signal Processing (DSP) Module (`dsp/`)**
-    -   Translate the Go DSP functions to Python, likely using libraries like `NumPy` and `SciPy`.
-    -   Key tasks will include implementing the FSK demodulator, filtering, and signal normalization logic.
-
-3.  **Port the Protocol Decoder (`protocol/`)**
-    -   Implement the logic to decode the Davis Instruments wireless protocol.
-    -   This will involve understanding the packet structure, data encoding, and different sensor types.
-
-4.  **Port the CRC Functions (`crc/`)**
-    -   Translate the CRC (Cyclic Redundancy Check) calculation and validation logic to Python.
-    -   This is a critical step for ensuring the integrity of the received data packets.
-
-5.  **Integrate Modules and Process Data**
-    -   Combine the DSP, protocol, and CRC modules in the main application loop.
-    -   The application will read data from the RTL-SDR, process it through the DSP pipeline, decode the packets, and validate their CRCs.
-
-6.  **Implement MQTT Publisher for Home Assistant**
-    -   Integrate an MQTT client library (e.g., `paho-mqtt`).
-    -   Format the decoded weather data into a structure suitable for Home Assistant (e.g., JSON).
-    -   Publish the data to an MQTT broker, allowing for integration with Home Assistant.
-
+2.  **Port the Digital Signal Processing (DSP) Module (Done)**
+3.  **Port the Protocol Decoder (Done)**
+4.  **Port the CRC Functions (Done)**
+5.  **Integrate Modules and Process Data (Done)**
+6.  **Implement MQTT Publisher for Home Assistant (In Progress)**
+    -   The application is currently being updated to publish data in a format that Home Assistant can interpret. This involves publishing discovery messages and structuring the data payloads correctly.
 7.  **Refinement and Testing**
     -   Implement robust error handling, configuration options (e.g., for MQTT settings), and comprehensive logging.
     -   Conduct end-to-end testing to ensure the system is reliable, from signal reception to data appearing in Home Assistant.
