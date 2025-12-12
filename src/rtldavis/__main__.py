@@ -143,7 +143,7 @@ async def main_async() -> int:
             sdr.freq_correction = args.ppm
 
         hop = p.rand_hop()
-        sdr.center_freq = hop.channel_freq + hop.freq_error
+        sdr.center_freq = hop.channel_freq + hop.freq_corr
         logger.warning("Tuned to %d Hz (US Band)", sdr.center_freq)
 
         miss_count = 3
@@ -161,7 +161,7 @@ async def main_async() -> int:
                     new_hop = p.next_hop()
                     dwell_time_seconds = p.dwell_time
                 
-                sdr.center_freq = new_hop.channel_freq + new_hop.freq_error
+                sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
                 logger.warning("Hopping to %d Hz", sdr.center_freq)
 
         hop_task = asyncio.create_task(hop_and_log())
