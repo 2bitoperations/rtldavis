@@ -168,19 +168,18 @@ class Demodulator:
                 logger.debug("Sliced packet: %s", pkt_bytes.hex())
                 seen.add(pkt_bytes)
                 
-                # Calculate RSSI and SNR from raw IQ samples
+                # Calculate RSSI from raw IQ samples
                 signal_start = q_idx
                 signal_end = q_idx + self.cfg.packet_length
                 signal_iq = self.raw_samples[signal_start:signal_end]
                 signal_power = np.mean(np.abs(signal_iq)**2)
-                
-                noise_start = max(0, q_idx - self.cfg.packet_length)
-                noise_end = q_idx
-                noise_iq = self.raw_samples[noise_start:noise_end]
-                noise_power = np.mean(np.abs(noise_iq)**2) if noise_iq.size > 0 else 1e-9
-
                 rssi = 10 * math.log10(signal_power) if signal_power > 0 else -120
-                snr = 10 * math.log10(signal_power / noise_power) if noise_power > 0 else 50
+
+                # Calculate Symbol SNR from demodulated signal
+                demod_sig = self.discriminated[signal_start:signal_end]
+                signal_mag = np.mean(np.abs(demod_sig))
+                noise_var = np.var(np.abs(demod_sig))
+                snr = 10 * math.log10(signal_mag**2 / noise_var) if noise_var > 0 else 50
                 
                 packets.append(Packet(index=q_idx, data=np.frombuffer(pkt_bytes, dtype=np.uint8), rssi=rssi, snr=snr))
         return packets

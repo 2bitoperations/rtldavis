@@ -193,7 +193,7 @@ class Parser:
             if msg.humidity is not None:
                 log_msg += f"    - Humidity: {msg.humidity}%\n"
             if msg.rain_rate is not None:
-                log_msg += f"    - Rain Rate: {msg.rain_rate} clicks/hr\n"
+                log_msg += f"    - Rain Rate: {msg.rain_rate} in/hr\n"
             if msg.rain_total is not None:
                 log_msg += f"    - Rain Total: {msg.rain_total} clicks\n"
             if msg.uv_index is not None:
@@ -228,16 +228,27 @@ class Parser:
             temp_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
             temp = temp_raw / 10.0
         elif sensor == Sensor.HUMIDITY:
-            # Humidity is a 10-bit value in 1/10ths of a percent
-            hum_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
+            # Matches original Go implementation
+            hum_raw = ((msg_data[3] << 8) | msg_data[4]) >> 4
             humidity = hum_raw / 10.0
         elif sensor == Sensor.RAIN_RATE:
-            # Rain rate is a 12-bit value, number of clicks per hour
-            rain_rate_raw = (msg_data[3] << 8 | msg_data[4]) & 0x0FFF
-            rain_rate = float(rain_rate_raw)
+            # Rain rate is transmitted as seconds between tips (or similar count)
+            # We assume 0.01 inch tips.
+            # Rate (in/hr) = 3600 / seconds_between_tips * 0.01
+            #              = 36 / seconds_between_tips
+            # If value is 0 or very small, it might mean no rain or error.
+            # We use 12 bits? Or 16?
+            # Using 16 bits to be safe, as 0xFF73 was seen.
+            rain_rate_raw = (msg_data[3] << 8 | msg_data[4])
+            if rain_rate_raw > 0 and rain_rate_raw != 0xFFFF:
+                 # If raw value is very large, rate is very small.
+                 # 3955 -> 0.009 in/hr.
+                 rain_rate = 36.0 / float(rain_rate_raw)
+            else:
+                 rain_rate = 0.0
         elif sensor == Sensor.RAIN:
-            # Rain is a 12-bit value, number of clicks
-            rain_total_raw = (msg_data[3] << 8 | msg_data[4]) & 0x0FFF
+            # Rain is a 15-bit value (7 bits from byte 3, 8 bits from byte 4)
+            rain_total_raw = ((msg_data[3] & 0x7F) << 8) | msg_data[4]
             rain_total = float(rain_total_raw)
         elif sensor == Sensor.UV_INDEX:
             # UV is an 8-bit value
