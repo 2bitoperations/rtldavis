@@ -190,7 +190,11 @@ async def main_async() -> int:
                         await asyncio.wait_for(packet_received_event.wait(), timeout=timeout)
                         packet_received_event.clear()
                         # Packet received! Resync our clock.
-                        last_hop_time = time.time()
+                        actual_time = time.time()
+                        drift = actual_time - target_next_hop_time
+                        logger.info("Packet received. Expected: %.4f, Actual: %.4f, Drift: %+.4f s", target_next_hop_time, actual_time, drift)
+                        
+                        last_hop_time = actual_time
                         missed_count = 0
                     except asyncio.TimeoutError:
                         # Missed packet. Maintain cadence.

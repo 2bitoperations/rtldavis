@@ -109,17 +109,15 @@ class Demodulator:
         dest = self.raw_samples[self.cfg.buffer_length - self.cfg.block_size:]
         
         if np.iscomplexobj(input_data):
-            # Input is already complex, just copy it
             if input_data.size != dest.size:
                 logger.error(f"Incompatible array sizes: input_data.size={input_data.size}, dest.size={dest.size}")
                 raise ValueError("Incompatible array sizes")
             dest[:] = input_data
         else:
-            # Input is bytes, convert to complex
             self.byte_to_cmplx.execute(input_data, dest)
 
         self.iq = np.roll(self.iq, -self.cfg.block_size)
-        self.filtered[0] = self.filtered[-1]
+        self.filtered = np.roll(self.filtered, -self.cfg.block_size)
         self.discriminated = np.roll(self.discriminated, -self.cfg.block_size)
         self.quantized = np.roll(self.quantized, -self.cfg.block_size)
 
@@ -168,18 +166,28 @@ class Demodulator:
                 logger.debug("Sliced packet: %s", pkt_bytes.hex())
                 seen.add(pkt_bytes)
                 
-                # Calculate RSSI from raw IQ samples
+                # Calculate RSSI and SNR
                 signal_start = q_idx
                 signal_end = q_idx + self.cfg.packet_length
-                signal_iq = self.raw_samples[signal_start:signal_end]
-                signal_power = np.mean(np.abs(signal_iq)**2)
-                rssi = 10 * math.log10(signal_power) if signal_power > 0 else -120
+                
+                # Use filtered IQ data for power calculations
+                signal_iq = self.filtered[signal_start:signal_end]
+                
+                # Estimate noise power from a region before the preamble
+                noise_start = max(0, signal_start - self.cfg.preamble_length)
+                noise_end = signal_start
+                if noise_end > noise_start:
+                    noise_iq = self.filtered[noise_start:noise_end]
+                    noise_power = np.mean(np.abs(noise_iq)**2)
+                else:
+                    noise_power = 1e-9 # Avoid division by zero if no noise region is available
+                
+                # Estimate signal power from the preamble region
+                preamble_iq = self.filtered[signal_start : signal_start + self.cfg.preamble_length]
+                signal_power = np.mean(np.abs(preamble_iq)**2)
 
-                # Calculate Symbol SNR from demodulated signal
-                demod_sig = self.discriminated[signal_start:signal_end]
-                signal_mag = np.mean(np.abs(demod_sig))
-                noise_var = np.var(np.abs(demod_sig))
-                snr = 10 * math.log10(signal_mag**2 / noise_var) if noise_var > 0 else 50
+                rssi = 10 * math.log10(signal_power) if signal_power > 0 else -120
+                snr = 10 * math.log10(signal_power / noise_power) if noise_power > 0 else 50
                 
                 packets.append(Packet(index=q_idx, data=np.frombuffer(pkt_bytes, dtype=np.uint8), rssi=rssi, snr=snr))
         return packets
