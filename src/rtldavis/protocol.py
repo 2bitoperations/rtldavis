@@ -3,10 +3,9 @@ import math
 import random
 from enum import Enum
 from typing import List, NamedTuple, Dict, Set, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import time
 from datetime import datetime, timezone, timedelta
-from collections import defaultdict
 
 import numpy as np
 
@@ -60,8 +59,7 @@ class Message:
 class Hop(NamedTuple):
     channel_idx: int
     channel_freq: int
-    freq_corr: int
-    transmitter: int
+    freq_error: int
 
 
 def new_packet_config(symbol_length: int) -> dsp.PacketConfig:
@@ -81,31 +79,15 @@ def swap_bit_order(b: int) -> int:
     return b
 
 
-@dataclass
 class Parser:
-    symbol_length: int
-    station_id: Optional[int] = None
-    cfg: dsp.PacketConfig = field(init=False)
-    demodulator: dsp.Demodulator = field(init=False)
-    crc: crc.CRC = field(init=False)
-    dwell_time: float = field(init=False)
-    channels: List[int] = field(init=False)
-    channel_count: int = field(init=False)
-    hop_pattern: List[int] = field(init=False)
-    hop_idx: int = 0
-    transmitter: int = 0
-    freq_corr: int = 0
-    max_tr_ch_list: int = 10
-    factor: float = 0.0
-    freq_err_tr_ch_list: Dict[int, Dict[int, List[int]]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(lambda: [0] * 10)))
-    freq_err_tr_ch_ptr: Dict[int, Dict[int, int]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(int)))
+    def __init__(self, symbol_length: int, station_id: Optional[int] = None) -> None:
+        self.cfg: dsp.PacketConfig = new_packet_config(symbol_length)
+        self.demodulator: dsp.Demodulator = dsp.Demodulator(self.cfg)
+        self.crc: crc.CRC = crc.CRC("CCITT-16", 0, 0x1021, 0)
+        self.id: Optional[int] = station_id
+        self.dwell_time: float = 2.5625 + (station_id or 0) * 0.0625
 
-    def __post_init__(self):
-        self.cfg = new_packet_config(self.symbol_length)
-        self.demodulator = dsp.Demodulator(self.cfg)
-        self.crc = crc.CRC("CCITT-16", 0, 0x1021, 0)
-        self.dwell_time = 2.5625 + (self.station_id or 0) * 0.0625
-        self.channels = [
+        self.channels: List[int] = [
             902355835, 902857585, 903359336, 903861086, 904362837, 904864587,
             905366338, 905868088, 906369839, 906871589, 907373340, 907875090,
             908376841, 908878591, 909380342, 909882092, 910383843, 910885593,
@@ -116,42 +98,34 @@ class Parser:
             923429355, 923931106, 924432856, 924934607, 925436357, 925938108,
             926439858, 926941609, 927443359,
         ]
-        self.channel_count = len(self.channels)
-        self.hop_pattern = [
+        self.channel_count: int = len(self.channels)
+
+        self.hop_pattern: List[int] = [
             0, 19, 41, 25, 8, 47, 32, 13, 36, 22, 3, 29, 44, 16, 5, 27, 38, 10,
             49, 21, 2, 30, 42, 14, 48, 7, 24, 34, 45, 1, 17, 39, 26, 9, 31, 50,
             37, 12, 20, 33, 4, 43, 28, 15, 35, 6, 40, 11, 23, 46, 18,
         ]
-        self.hop_idx = random.randint(0, self.channel_count - 1)
-        self.factor = (float(self.max_tr_ch_list / 2) + 0.5) * 2.0
+        self.hop_idx: int = random.randint(0, self.channel_count - 1)
 
-    def _hop(self) -> Hop:
+        self.channel_freq_err: Dict[int, int] = {}
+        self.current_freq_err: int = 0
+
+    def hop(self) -> Hop:
         channel_idx = self.hop_pattern[self.hop_idx]
         channel_freq = self.channels[channel_idx]
-        return Hop(channel_idx, channel_freq, self.freq_corr, self.transmitter)
 
-    def set_hop(self, n: int, tr: int) -> Hop:
-        self.hop_idx = n % self.channel_count
-        self.transmitter = tr
-        ch = self.hop_pattern[self.hop_idx]
-        ptr = self.freq_err_tr_ch_ptr[tr][ch]
+        if channel_idx in self.channel_freq_err:
+            self.current_freq_err = self.channel_freq_err[channel_idx]
 
-        new_freq_corr = 0
-        for i in range(self.max_tr_ch_list):
-            error = self.freq_err_tr_ch_list[tr][ch][ptr]
-            new_freq_corr += (error * (i + 1) / self.max_tr_ch_list)
-            ptr = (ptr + 1) % self.max_tr_ch_list
-        
-        self.freq_corr = int(float(new_freq_corr) / self.factor)
-        return self._hop()
+        return Hop(channel_idx, channel_freq, self.current_freq_err)
 
     def next_hop(self) -> Hop:
         self.hop_idx = (self.hop_idx + 1) % self.channel_count
-        return self.set_hop(self.hop_idx, self.transmitter)
+        return self.hop()
 
     def rand_hop(self) -> Hop:
         self.hop_idx = random.randint(0, self.channel_count - 1)
-        return self.set_hop(self.hop_idx, self.transmitter)
+        return self.hop()
 
     def parse(self, pkts: List[dsp.Packet]) -> List[Message]:
         seen: Set[bytes] = set()
@@ -163,34 +137,28 @@ class Parser:
                 continue
             seen.add(data)
 
-            msg_payload = data[:8]
-            if self.crc.checksum(msg_payload) != 0:
+            # Reverted to old CRC logic
+            if self.crc.checksum(data[2:]) != 0:
                 logger.debug("CRC check failed")
                 continue
 
             logger.info("CRC check OK. RSSI: %.2f dB, SNR: %.2f dB", pkt.rssi, pkt.snr)
 
-            # Use preamble for frequency error calculation (as in rtldavis2)
-            preamble_start = pkt.index
-            preamble_end = pkt.index + self.cfg.preamble_length
-            preamble_samples = self.demodulator.discriminated[preamble_start:preamble_end]
-            
-            mean = np.mean(preamble_samples)
-            freq_err = -int((mean * float(self.cfg.sample_rate)) / (2 * math.pi))
-            logger.info("Frequency error: %d Hz", freq_err)
+            lower = pkt.index + 8 * self.cfg.symbol_length
+            upper = pkt.index + 24 * self.cfg.symbol_length
+            tail = self.demodulator.discriminated[lower:upper]
 
-            msg_data = msg_payload
+            mean = np.mean(tail)
+            freq_error = -int(9600 + (mean * self.cfg.sample_rate) / (2 * math.pi))
+
+            self.channel_freq_err[self.hop_pattern[self.hop_idx]] = self.current_freq_err + freq_error
+            self.current_freq_err += freq_error
+            logger.info("Frequency error: %d Hz", freq_error)
+
+            msg_data = data[2:]
             msg_id = msg_data[0] & 0x7
-            
-            # Store frequency error for this transmitter and channel
-            tr = msg_id
-            ch = self.hop_pattern[self.hop_idx]
-            ptr = self.freq_err_tr_ch_ptr[tr][ch]
-            self.freq_err_tr_ch_list[tr][ch][ptr] = freq_err
-            self.freq_err_tr_ch_ptr[tr][ch] = (ptr + 1) % self.max_tr_ch_list
-            self.transmitter = tr # Update last seen transmitter
 
-            if self.station_id is not None and msg_id != self.id:
+            if self.id is not None and msg_id != self.id:
                 logger.info("Ignoring message for station ID %d", msg_id)
                 continue
 
