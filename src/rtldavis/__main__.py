@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 import dataclasses
 import numpy as np
 import subprocess
+import time
 
 from rtlsdr.rtlsdr import RtlSdr
 from rtlsdr.rtlsdraio import RtlSdrAio
@@ -142,29 +143,59 @@ async def main_async() -> int:
         if args.ppm != 0:
             sdr.freq_correction = args.ppm
 
+        # Start with a random hop to find the initial channel
         hop = p.rand_hop()
-        sdr.center_freq = hop.channel_freq + hop.freq_error
-        logger.warning("Tuned to %d Hz (US Band)", sdr.center_freq)
+        sdr.center_freq = hop.channel_freq + hop.freq_corr
+        logger.warning("Tuned to %d Hz (US Band) - Waiting for sync...", sdr.center_freq)
 
-        miss_count = 3
-        dwell_time_seconds = 52 * p.dwell_time
+        # Synchronization state
+        last_hop_time = time.time()
+        
+        # Event to signal a packet was received, to resync the hop timer
+        packet_received_event = asyncio.Event()
+        
+        # Flag to indicate if we are synced
+        is_synced = False
 
-        async def hop_and_log():
-            nonlocal miss_count, dwell_time_seconds
+        async def hop_task():
+            """Task to follow the station's hopping pattern."""
+            nonlocal last_hop_time, is_synced
+            
+            # Wait until we are synced before starting the hop loop
+            await packet_received_event.wait()
+            is_synced = True
+            packet_received_event.clear()
+            last_hop_time = time.time()
+            logger.info("Synced! Starting hop sequence.")
+
             while True:
-                await asyncio.sleep(dwell_time_seconds)
-                miss_count += 1
-                if miss_count >= 3:
-                    new_hop = p.rand_hop()
-                    dwell_time_seconds = 52 * p.dwell_time
-                else:
-                    new_hop = p.next_hop()
-                    dwell_time_seconds = p.dwell_time
+                # Calculate when the next hop should occur
+                next_hop_time = last_hop_time + p.dwell_time
+                now = time.time()
                 
-                sdr.center_freq = new_hop.channel_freq + new_hop.freq_error
-                logger.warning("Hopping to %d Hz", sdr.center_freq)
+                sleep_duration = next_hop_time - now
+                
+                if sleep_duration > 0:
+                    try:
+                        # Wait for the next hop time, or until a packet is received
+                        await asyncio.wait_for(packet_received_event.wait(), timeout=sleep_duration)
+                        # If we are here, a packet was received!
+                        packet_received_event.clear()
+                        # We received a packet, so we are synced.
+                        # Reset our base time to prevent drift.
+                        last_hop_time = time.time()
+                        continue 
+                    except asyncio.TimeoutError:
+                        # Timeout means no packet received, time to hop!
+                        pass
+                
+                # Time to hop
+                new_hop = p.next_hop()
+                sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
+                logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
+                last_hop_time = time.time()
 
-        hop_task = asyncio.create_task(hop_and_log())
+        hop_task_handle = asyncio.create_task(hop_task())
 
         read_size = p.cfg.block_size * 8 # Read in chunks of 8 blocks of complex samples
 
@@ -174,9 +205,10 @@ async def main_async() -> int:
                 if len(chunk) == p.cfg.block_size:
                     packets = p.demodulator.demodulate(chunk)
                     messages = p.parse(packets)
+                    
                     if messages:
-                        miss_count = 0
-                        dwell_time_seconds = p.dwell_time * 1.5
+                        # Signal the hop task that we received a packet
+                        packet_received_event.set()
                         
                     for msg in messages:
                         logger.info("Received: %s", msg)
@@ -192,8 +224,8 @@ async def main_async() -> int:
         logger.exception("An error occurred: %s", str(e))
         return 1
     finally:
-        if 'hop_task' in locals():
-            hop_task.cancel()
+        if 'hop_task_handle' in locals():
+            hop_task_handle.cancel()
         if sdr:
             try:
                 await sdr.stop()

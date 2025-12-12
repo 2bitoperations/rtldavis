@@ -1,8 +1,9 @@
 """
 Decoder for Davis humidity data.
 """
+import logging
 
-def decode_humidity(data: bytes) -> float:
+def decode_humidity(data: bytes, logger: logging.Logger) -> float:
     """
     Decodes humidity from a raw data packet.
 
@@ -13,18 +14,13 @@ def decode_humidity(data: bytes) -> float:
     > displayed on the console.
     >
     > humidity = (((Byte4 >> 4) << 8) + Byte3) / 10.0
-    >
-    > Here is an example using an actual message from my console.
-    > a0 06 52 83 38 00 5a c8
-    > The corresponding humidity value is then
-    > ((0x38 >> 4) << 8) + 0x83 = 131 + 768 = 899 = 89.9% Relative Humidity
     """
-    # The documentation seems to have a typo.
-    # ((0x38 >> 4) << 8) is (3 << 8) = 768.
-    # 0x83 is 131.
-    # 768 + 131 = 899.
-    # So the logic is correct, even if the text description is slightly confusing.
-    
     raw_humidity = ((data[4] >> 4) << 8) + data[3]
     humidity = float(raw_humidity) / 10.0
+    
+    log_msg = f"    - Raw Value: 0x{raw_humidity:03X} ({raw_humidity})\n"
+    log_msg += f"    - Formula: ((((Byte4 >> 4) << 8) + Byte3) / 10.0)\n"
+    log_msg += f"    - Humidity: {humidity:.1f}%"
+    logger.info(log_msg)
+
     return humidity

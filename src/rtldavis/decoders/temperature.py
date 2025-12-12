@@ -1,8 +1,9 @@
 """
 Decoder for Davis temperature data.
 """
+import logging
 
-def decode_temperature(data: bytes) -> float:
+def decode_temperature(data: bytes, logger: logging.Logger) -> float:
     """
     Decodes temperature from a raw data packet.
 
@@ -20,4 +21,10 @@ def decode_temperature(data: bytes) -> float:
     """
     raw_temp = (data[3] << 8) | data[4]
     temp_f = float(raw_temp) / 160.0
+    
+    log_msg = f"    - Raw Value: 0x{raw_temp:04X} ({raw_temp})\n"
+    log_msg += f"    - Formula: {raw_temp} / 160.0\n"
+    log_msg += f"    - Temperature: {temp_f:.1f}°F"
+    logger.info(log_msg)
+
     return temp_f
