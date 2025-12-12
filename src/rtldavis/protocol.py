@@ -195,7 +195,14 @@ class Parser:
             try:
                 sensor = Sensor(sensor_id)
             except ValueError:
-                logger.warning("Unknown sensor type: 0x%02X", sensor_id)
+                logger.warning("Unknown sensor type: 0x%02X. Raw data: %s", sensor_id, msg_data.hex())
+                try:
+                    with open("sensor.log", "a") as f:
+                        ts = time.time()
+                        ct = datetime.fromtimestamp(ts, tz=timezone(timedelta(hours=-5)))
+                        f.write(f"{ts} {ct.isoformat()} {msg_data.hex()}\n")
+                except Exception as e:
+                    logger.error(f"Failed to write to sensor.log: {e}")
                 continue
 
             if sensor not in [Sensor.TEMPERATURE, Sensor.WIND_GUST_SPEED]:

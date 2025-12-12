@@ -148,52 +148,54 @@ async def main_async() -> int:
         sdr.center_freq = hop.channel_freq + hop.freq_corr
         logger.warning("Tuned to %d Hz (US Band) - Waiting for sync...", sdr.center_freq)
 
-        # Synchronization state
-        last_hop_time = time.time()
-        
-        # Event to signal a packet was received, to resync the hop timer
+        # Event to signal a packet was received, to start the hop sequence
         packet_received_event = asyncio.Event()
-        
-        # Flag to indicate if we are synced
-        is_synced = False
 
         async def hop_task():
             """Task to follow the station's hopping pattern."""
-            nonlocal last_hop_time, is_synced
-            
             # Wait until we are synced before starting the hop loop
             await packet_received_event.wait()
-            is_synced = True
             packet_received_event.clear()
-            last_hop_time = time.time()
             logger.info("Synced! Starting hop sequence.")
+            
+            # Hop immediately after first packet to get ahead of the transmitter
+            new_hop = p.next_hop()
+            sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
+            logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
+            
+            # Initialize last_hop_time to now
+            last_hop_time = time.time()
 
             while True:
-                # Calculate when the next hop should occur
-                next_hop_time = last_hop_time + p.dwell_time
-                now = time.time()
+                # Calculate the deadline for the next packet
+                # We want to wait for dwell_time + margin
+                # But we must maintain the cadence relative to last_hop_time
                 
-                sleep_duration = next_hop_time - now
+                # Target time for the NEXT hop (if we miss this one)
+                target_next_hop_time = last_hop_time + p.dwell_time
                 
-                if sleep_duration > 0:
-                    try:
-                        # Wait for the next hop time, or until a packet is received
-                        await asyncio.wait_for(packet_received_event.wait(), timeout=sleep_duration)
-                        # If we are here, a packet was received!
-                        packet_received_event.clear()
-                        # We received a packet, so we are synced.
-                        # Reset our base time to prevent drift.
-                        last_hop_time = time.time()
-                        continue 
-                    except asyncio.TimeoutError:
-                        # Timeout means no packet received, time to hop!
-                        pass
+                # Timeout for waiting for the packet
+                # We give it a bit of margin (e.g. 100ms) past the dwell time
+                timeout = (target_next_hop_time + 0.1) - time.time()
                 
-                # Time to hop
+                if timeout < 0:
+                    # We are already late! Hop immediately.
+                    timeout = 0
+
+                try:
+                    await asyncio.wait_for(packet_received_event.wait(), timeout=timeout)
+                    packet_received_event.clear()
+                    # Packet received! Resync our clock.
+                    last_hop_time = time.time()
+                except asyncio.TimeoutError:
+                    # Missed packet. Maintain cadence.
+                    logger.warning("Missed packet, hopping anyway.")
+                    last_hop_time = target_next_hop_time
+                
+                # Hop to the next channel
                 new_hop = p.next_hop()
                 sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
                 logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
-                last_hop_time = time.time()
 
         hop_task_handle = asyncio.create_task(hop_task())
 
