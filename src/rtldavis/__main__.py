@@ -189,11 +189,21 @@ async def main_async() -> int:
                     try:
                         await asyncio.wait_for(packet_received_event.wait(), timeout=timeout)
                         packet_received_event.clear()
-                        # Packet received! Resync our clock.
+                        
+                        # Packet received! Check if it's too early.
                         actual_time = time.time()
                         drift = actual_time - target_next_hop_time
+                        
+                        # If the packet is more than 0.5s early, it's likely a duplicate or glitch.
+                        # The dwell time is ~2.56s, so receiving a packet 2s early is suspicious.
+                        if drift < -0.5:
+                            logger.warning("Packet received too early (%.4fs). Ignoring as duplicate/glitch.", actual_time - last_hop_time)
+                            # Go back to waiting for the real packet
+                            continue
+
                         logger.info("Packet received. Expected: %.4f, Actual: %.4f, Drift: %+.4f s", target_next_hop_time, actual_time, drift)
                         
+                        # Resync our clock.
                         last_hop_time = actual_time
                         missed_count = 0
                     except asyncio.TimeoutError:
@@ -220,6 +230,7 @@ async def main_async() -> int:
         hop_task_handle = asyncio.create_task(hop_task())
 
         read_size = p.cfg.block_size * 8 # Read in chunks of 8 blocks of complex samples
+        last_msg_data = None
 
         async for samples in sdr.stream(num_samples_or_bytes=read_size):
             for i in range(0, len(samples), p.cfg.block_size):
@@ -228,11 +239,21 @@ async def main_async() -> int:
                     packets = p.demodulator.demodulate(chunk)
                     messages = p.parse(packets)
                     
-                    if messages:
+                    valid_messages = []
+                    for msg in messages:
+                        # Check for duplicates
+                        msg_data_bytes = msg.packet.data.tobytes()
+                        if msg_data_bytes == last_msg_data:
+                            logger.debug("Duplicate packet ignored: %s", msg_data_bytes.hex())
+                            continue
+                        last_msg_data = msg_data_bytes
+                        valid_messages.append(msg)
+                    
+                    if valid_messages:
                         # Signal the hop task that we received a packet
                         packet_received_event.set()
                         
-                    for msg in messages:
+                    for msg in valid_messages:
                         logger.info("Received: %s", msg)
                         if mqtt_publisher:
                             payload = dataclasses.asdict(msg)
