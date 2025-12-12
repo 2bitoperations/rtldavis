@@ -3,6 +3,8 @@ import json
 from paho.mqtt import client as mqtt_client
 from typing import Any, Dict, Optional, Set, Tuple
 
+from .version import __version__
+
 logger = logging.getLogger(__name__)
 
 # Based on Home Assistant MQTT sensor documentation
@@ -10,7 +12,7 @@ logger = logging.getLogger(__name__)
 SENSOR_DESCRIPTIONS = {
     "temperature": {
         "device_class": "temperature",
-        "unit_of_measurement": "°F",  # Assuming Davis default, can be configured
+        "unit_of_measurement": "°F",
         "state_class": "measurement",
     },
     "humidity": {
@@ -29,13 +31,13 @@ SENSOR_DESCRIPTIONS = {
     },
     "rain_rate": {
         "device_class": "precipitation_intensity",
-        "unit_of_measurement": "in/hr", # The raw data is in clicks/hr and needs conversion
+        "unit_of_measurement": "in/hr",
         "state_class": "measurement",
         "icon": "mdi:weather-rainy",
     },
     "rain_total": {
         "device_class": "precipitation",
-        "unit_of_measurement": "in", # The raw data is in clicks and needs conversion
+        "unit_of_measurement": "in",
         "state_class": "total_increasing",
         "icon": "mdi:weather-pouring",
     },
@@ -51,15 +53,26 @@ SENSOR_DESCRIPTIONS = {
         "state_class": "measurement",
         "icon": "mdi:sun-wireless",
     },
+    "signal_strength": {
+        "device_class": "signal_strength",
+        "unit_of_measurement": "dBm",
+        "state_class": "measurement",
+    },
+    "snr": {
+        "device_class": "signal_strength",
+        "unit_of_measurement": "dB",
+        "state_class": "measurement",
+    },
 }
 
 
 class MQTTPublisher:
-    def __init__(self, broker: str, port: int, topic: str, client_id: str,
+    def __init__(self, broker: str, port: int, discovery_prefix: str, state_prefix: str, client_id: str,
                  username: Optional[str] = None, password: Optional[str] = None) -> None:
         self.broker: str = broker
         self.port: int = port
-        self.base_topic: str = topic  # Should be "homeassistant" for discovery
+        self.discovery_prefix: str = discovery_prefix
+        self.state_prefix: str = state_prefix
         self.client_id: str = client_id
         self.username: Optional[str] = username
         self.password: Optional[str] = password
@@ -97,27 +110,30 @@ class MQTTPublisher:
         device_id = f"rtldavis_{station_id}"
         unique_id = f"{device_id}_{sensor_name}"
 
-        config_topic = f"{self.base_topic}/sensor/{unique_id}/config"
-        state_topic = f"rtldavis/{station_id}/state"
+        config_topic = f"{self.discovery_prefix}/sensor/{unique_id}/config"
+        state_topic = f"{self.state_prefix}/{station_id}/state"
 
         payload = {
             "name": f"Davis {sensor_name.replace('_', ' ').title()}",
             "unique_id": unique_id,
             "state_topic": state_topic,
-            "value_template": f"{{{{ value_json.{sensor_name} }}}}",
+            "value_template": f"{{% if value_json.{sensor_name} is defined %}} {{ value_json.{sensor_name} }} {{% endif %}}",
             "device": {
                 "identifiers": [device_id],
                 "name": f"Davis Weather Station {station_id}",
                 "model": "RTL-SDR Davis Station",
                 "manufacturer": "rtldavis",
+                "sw_version": __version__,
             },
+            "availability": [
+                {
+                    "topic": state_topic,
+                    "payload_available": "online",
+                    "payload_not_available": "offline"
+                }
+            ],
             **description,
         }
-
-        # Use the state topic to determine availability
-        payload["availability_topic"] = state_topic
-        # Publish all other values as attributes
-        payload["json_attributes_topic"] = state_topic
 
         logger.info("Publishing config for %s to %s", sensor_name, config_topic)
         self.client.publish(config_topic, json.dumps(payload), retain=True)
@@ -128,24 +144,20 @@ class MQTTPublisher:
             logger.warning("Message is missing station ID, cannot publish.")
             return
 
-        # The original message has an enum for sensor, convert to string for JSON
         if 'sensor' in message and not isinstance(message['sensor'], str):
             message['sensor'] = message['sensor'].name
 
-        # Publish discovery messages for all sensors in the payload with a value
         for sensor_name, value in message.items():
             if value is not None and sensor_name in SENSOR_DESCRIPTIONS:
                 if (station_id, sensor_name) not in self._configured_sensors:
                     self._publish_config(station_id, sensor_name, SENSOR_DESCRIPTIONS[sensor_name])
                     self._configured_sensors.add((station_id, sensor_name))
 
-        # Publish state
-        state_topic = f"rtldavis/{station_id}/state"
-
-        # Filter out None values from payload
+        state_topic = f"{self.state_prefix}/{station_id}/state"
         payload = json.dumps({k: v for k, v in message.items() if v is not None})
+        
         logger.info("Publishing message to topic '%s': %s", state_topic, payload)
-        result = self.client.publish(state_topic, payload)
+        result = self.client.publish(state_topic, payload, retain=False)
 
         status = result[0]
         if status == 0:

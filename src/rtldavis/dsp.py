@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 class Packet(NamedTuple):
     index: int
     data: np.ndarray
+    signal_strength: float
 
 class ByteToCmplxLUT:
     """
@@ -147,7 +148,14 @@ class Demodulator:
             if pkt_bytes not in seen:
                 logger.debug("Sliced packet: %s", pkt_bytes.hex())
                 seen.add(pkt_bytes)
-                packets.append(Packet(index=q_idx, data=np.frombuffer(pkt_bytes, dtype=np.uint8)))
+                
+                # Calculate signal strength
+                signal_start = q_idx
+                signal_end = q_idx + self.cfg.packet_length
+                signal = self.discriminated[signal_start:signal_end]
+                signal_strength = np.mean(np.abs(signal))
+                
+                packets.append(Packet(index=q_idx, data=np.frombuffer(pkt_bytes, dtype=np.uint8), signal_strength=signal_strength))
         return packets
 
     def reset(self) -> None:

@@ -38,6 +38,8 @@ class Message:
     solar_radiation: Optional[float] = None
     uv_index: Optional[float] = None
     raw_sensor_id: Optional[int] = None
+    signal_strength: Optional[float] = None
+    snr: Optional[float] = None
 
 
 class Hop(NamedTuple):
@@ -126,7 +128,14 @@ class Parser:
                 logger.debug("CRC check failed: 0x%04X", checksum)
                 continue
 
-            logger.info("CRC check OK")
+            # Calculate SNR
+            noise_start = max(0, pkt.index - self.cfg.packet_length)
+            noise_end = pkt.index
+            noise = self.demodulator.discriminated[noise_start:noise_end]
+            noise_strength = np.mean(np.abs(noise)) if noise.size > 0 else 0
+            snr = 20 * math.log10(pkt.signal_strength / noise_strength) if noise_strength > 0 else 0
+            
+            logger.info("CRC check OK. Strength: %.2f, SNR: %.2f dB", pkt.signal_strength, snr)
 
             lower = pkt.index + 8 * self.cfg.symbol_length
             upper = pkt.index + 24 * self.cfg.symbol_length
@@ -158,6 +167,8 @@ class Parser:
                     wind_speed=msg_data[1],
                     wind_direction=msg_data[2],
                     raw_sensor_id=sensor_id,
+                    signal_strength=pkt.signal_strength,
+                    snr=snr,
                 )
                 raw_hex = msg_data.hex()
                 log_msg = f"Partially decoded message for station ID {msg.id} (sensor: Unknown):\n"
@@ -170,7 +181,7 @@ class Parser:
                 msgs.append(msg)
                 continue
 
-            msg = self._parse_sensor_data(pkt, msg_id, sensor, msg_data)
+            msg = self._parse_sensor_data(pkt, msg_id, sensor, msg_data, snr)
 
             raw_hex = msg_data.hex()
             log_msg = f"Decoded message for station ID {msg.id} (sensor: {msg.sensor.name}):\n"
@@ -198,7 +209,7 @@ class Parser:
             msgs.append(msg)
         return msgs
 
-    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Sensor, msg_data: bytes) -> Message:
+    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Sensor, msg_data: bytes, snr: float) -> Message:
         temp = None
         humidity = None
         rain_rate = None
@@ -242,4 +253,6 @@ class Parser:
             rain_total=rain_total,
             solar_radiation=solar_radiation,
             uv_index=uv_index,
+            signal_strength=pkt.signal_strength,
+            snr=snr,
         )
