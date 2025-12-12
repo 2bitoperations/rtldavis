@@ -37,8 +37,11 @@ class Message:
     rain_total: Optional[float] = None
     solar_radiation: Optional[float] = None
     uv_index: Optional[float] = None
+    wind_gust_speed: Optional[int] = None
+    super_cap_voltage: Optional[float] = None
+    light: Optional[float] = None
     raw_sensor_id: Optional[int] = None
-    signal_strength: Optional[float] = None
+    rssi: Optional[float] = None
     snr: Optional[float] = None
 
 
@@ -128,14 +131,7 @@ class Parser:
                 logger.debug("CRC check failed: 0x%04X", checksum)
                 continue
 
-            # Calculate SNR
-            noise_start = max(0, pkt.index - self.cfg.packet_length)
-            noise_end = pkt.index
-            noise = self.demodulator.discriminated[noise_start:noise_end]
-            noise_strength = np.mean(np.abs(noise)) if noise.size > 0 else 0
-            snr = 20 * math.log10(pkt.signal_strength / noise_strength) if noise_strength > 0 else 0
-            
-            logger.info("CRC check OK. Strength: %.2f, SNR: %.2f dB", pkt.signal_strength, snr)
+            logger.info("CRC check OK. RSSI: %.2f dB, SNR: %.2f dB", pkt.rssi, pkt.snr)
 
             lower = pkt.index + 8 * self.cfg.symbol_length
             upper = pkt.index + 24 * self.cfg.symbol_length
@@ -167,8 +163,8 @@ class Parser:
                     wind_speed=msg_data[1],
                     wind_direction=msg_data[2],
                     raw_sensor_id=sensor_id,
-                    signal_strength=pkt.signal_strength,
-                    snr=snr,
+                    rssi=pkt.rssi,
+                    snr=pkt.snr,
                 )
                 raw_hex = msg_data.hex()
                 log_msg = f"Partially decoded message for station ID {msg.id} (sensor: Unknown):\n"
@@ -181,7 +177,7 @@ class Parser:
                 msgs.append(msg)
                 continue
 
-            msg = self._parse_sensor_data(pkt, msg_id, sensor, msg_data, snr)
+            msg = self._parse_sensor_data(pkt, msg_id, sensor, msg_data)
 
             raw_hex = msg_data.hex()
             log_msg = f"Decoded message for station ID {msg.id} (sensor: {msg.sensor.name}):\n"
@@ -204,18 +200,28 @@ class Parser:
                 log_msg += f"    - UV Index: {msg.uv_index}\n"
             if msg.solar_radiation is not None:
                 log_msg += f"    - Solar Radiation: {msg.solar_radiation} W/m^2\n"
+            if msg.wind_gust_speed is not None:
+                log_msg += f"    - Wind Gust Speed: {msg.wind_gust_speed} mph\n"
+            if msg.super_cap_voltage is not None:
+                log_msg += f"    - Super Cap Voltage: {msg.super_cap_voltage} V\n"
+            if msg.light is not None:
+                log_msg += f"    - Light: {msg.light}\n"
+
 
             logger.info(log_msg)
             msgs.append(msg)
         return msgs
 
-    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Sensor, msg_data: bytes, snr: float) -> Message:
+    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Sensor, msg_data: bytes) -> Message:
         temp = None
         humidity = None
         rain_rate = None
         rain_total = None
         solar_radiation = None
         uv_index = None
+        wind_gust_speed = None
+        super_cap_voltage = None
+        light = None
 
         if sensor == Sensor.TEMPERATURE:
             # Temperature is a 10-bit value in 1/10ths of a degree F
@@ -240,6 +246,15 @@ class Parser:
             # Solar radiation is a 10-bit value in W/m^2
             solar_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
             solar_radiation = float(solar_raw)
+        elif sensor == Sensor.WIND_GUST_SPEED:
+            wind_gust_speed = msg_data[3]
+        elif sensor == Sensor.SUPER_CAP_VOLTAGE:
+            super_cap_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
+            super_cap_voltage = super_cap_raw / 100.0
+        elif sensor == Sensor.LIGHT:
+            light_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
+            light = float(light_raw)
+
 
         return Message(
             packet=pkt,
@@ -253,6 +268,9 @@ class Parser:
             rain_total=rain_total,
             solar_radiation=solar_radiation,
             uv_index=uv_index,
-            signal_strength=pkt.signal_strength,
-            snr=snr,
+            wind_gust_speed=wind_gust_speed,
+            super_cap_voltage=super_cap_voltage,
+            light=light,
+            rssi=pkt.rssi,
+            snr=pkt.snr,
         )

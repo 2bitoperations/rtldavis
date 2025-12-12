@@ -2,13 +2,15 @@ import numpy as np
 import logging
 from typing import List, NamedTuple
 import struct
+import math
 
 logger = logging.getLogger(__name__)
 
 class Packet(NamedTuple):
     index: int
     data: np.ndarray
-    signal_strength: float
+    rssi: float
+    snr: float
 
 class ByteToCmplxLUT:
     """
@@ -22,6 +24,7 @@ class ByteToCmplxLUT:
         Converts a byte array to a complex array.
         """
         if in_bytes.size != out_cmplx.size * 2:
+            logger.error(f"Incompatible array sizes: in_bytes.size={in_bytes.size}, out_cmplx.size={out_cmplx.size}")
             raise ValueError("Incompatible array sizes")
 
         out_cmplx.real = self.lut[in_bytes[0::2]]
@@ -92,19 +95,35 @@ class PacketConfig:
 class Demodulator:
     def __init__(self, cfg: PacketConfig) -> None:
         self.cfg = cfg
+        self.raw_samples = np.zeros(self.cfg.buffer_length, dtype=np.complex128)
         self.iq = np.zeros(self.cfg.block_size + 9, dtype=np.complex128)
         self.filtered = np.zeros(self.cfg.block_size + 1, dtype=np.complex128)
         self.discriminated = np.zeros(self.cfg.block_size * 2, dtype=np.float64)
         self.quantized = np.zeros(self.cfg.buffer_length, dtype=np.uint8)
         self.pkt = np.zeros((self.cfg.packet_symbols + 7) // 8, dtype=np.uint8)
+        self.byte_to_cmplx = ByteToCmplxLUT()
 
     def demodulate(self, input_data: np.ndarray) -> List[Packet]:
+        self.raw_samples = np.roll(self.raw_samples, -self.cfg.block_size)
+        
+        dest = self.raw_samples[self.cfg.buffer_length - self.cfg.block_size:]
+        
+        if np.iscomplexobj(input_data):
+            # Input is already complex, just copy it
+            if input_data.size != dest.size:
+                logger.error(f"Incompatible array sizes: input_data.size={input_data.size}, dest.size={dest.size}")
+                raise ValueError("Incompatible array sizes")
+            dest[:] = input_data
+        else:
+            # Input is bytes, convert to complex
+            self.byte_to_cmplx.execute(input_data, dest)
+
         self.iq = np.roll(self.iq, -self.cfg.block_size)
         self.filtered[0] = self.filtered[-1]
         self.discriminated = np.roll(self.discriminated, -self.cfg.block_size)
         self.quantized = np.roll(self.quantized, -self.cfg.block_size)
 
-        self.iq[9:] = input_data
+        self.iq[9:] = self.raw_samples[self.cfg.buffer_length - self.cfg.block_size:]
         rotate_fs4(self.iq[9:], self.iq[9:])
         fir9(self.iq, self.filtered[1:])
         discriminate(self.filtered, self.discriminated[self.cfg.block_size:])
@@ -149,16 +168,25 @@ class Demodulator:
                 logger.debug("Sliced packet: %s", pkt_bytes.hex())
                 seen.add(pkt_bytes)
                 
-                # Calculate signal strength
+                # Calculate RSSI and SNR from raw IQ samples
                 signal_start = q_idx
                 signal_end = q_idx + self.cfg.packet_length
-                signal = self.discriminated[signal_start:signal_end]
-                signal_strength = np.mean(np.abs(signal))
+                signal_iq = self.raw_samples[signal_start:signal_end]
+                signal_power = np.mean(np.abs(signal_iq)**2)
                 
-                packets.append(Packet(index=q_idx, data=np.frombuffer(pkt_bytes, dtype=np.uint8), signal_strength=signal_strength))
+                noise_start = max(0, q_idx - self.cfg.packet_length)
+                noise_end = q_idx
+                noise_iq = self.raw_samples[noise_start:noise_end]
+                noise_power = np.mean(np.abs(noise_iq)**2) if noise_iq.size > 0 else 1e-9
+
+                rssi = 10 * math.log10(signal_power) if signal_power > 0 else -120
+                snr = 10 * math.log10(signal_power / noise_power) if noise_power > 0 else 50
+                
+                packets.append(Packet(index=q_idx, data=np.frombuffer(pkt_bytes, dtype=np.uint8), rssi=rssi, snr=snr))
         return packets
 
     def reset(self) -> None:
+        self.raw_samples.fill(0)
         self.iq.fill(0)
         self.filtered.fill(0)
         self.discriminated.fill(0)

@@ -53,9 +53,24 @@ SENSOR_DESCRIPTIONS = {
         "state_class": "measurement",
         "icon": "mdi:sun-wireless",
     },
-    "signal_strength": {
+    "wind_gust_speed": {
+        "device_class": "wind_speed",
+        "unit_of_measurement": "mph",
+        "state_class": "measurement",
+    },
+    "super_cap_voltage": {
+        "device_class": "voltage",
+        "unit_of_measurement": "V",
+        "state_class": "measurement",
+    },
+    "light": {
+        "device_class": "illuminance",
+        "unit_of_measurement": "lx",
+        "state_class": "measurement",
+    },
+    "rssi": {
         "device_class": "signal_strength",
-        "unit_of_measurement": "dBm",
+        "unit_of_measurement": "dB",
         "state_class": "measurement",
     },
     "snr": {
@@ -80,11 +95,19 @@ class MQTTPublisher:
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self._configured_sensors: Set[Tuple[int, str]] = set()
+        self._availability_topics: Dict[int, str] = {}
 
     def connect(self) -> None:
         try:
             if self.username and self.password:
                 self.client.username_pw_set(self.username, self.password)
+            
+            # Set Last Will and Testament for all potential station IDs
+            # This is a bit of a hack, but we don't know the station ID until we receive a message
+            for i in range(8):
+                availability_topic = f"{self.state_prefix}/{i}/status"
+                self.client.will_set(availability_topic, payload="offline", retain=True)
+
             self.client.connect(self.broker, self.port)
             self.client.loop_start()
         except Exception as e:
@@ -92,6 +115,8 @@ class MQTTPublisher:
             raise
 
     def disconnect(self) -> None:
+        for topic in self._availability_topics.values():
+            self.client.publish(topic, payload="offline", retain=True)
         self.client.loop_stop()
         self.client.disconnect()
 
@@ -112,12 +137,14 @@ class MQTTPublisher:
 
         config_topic = f"{self.discovery_prefix}/sensor/{unique_id}/config"
         state_topic = f"{self.state_prefix}/{station_id}/state"
+        availability_topic = f"{self.state_prefix}/{station_id}/status"
+        self._availability_topics[station_id] = availability_topic
 
         payload = {
             "name": f"Davis {sensor_name.replace('_', ' ').title()}",
             "unique_id": unique_id,
             "state_topic": state_topic,
-            "value_template": f"{{% if value_json.{sensor_name} is defined %}} {{ value_json.{sensor_name} }} {{% endif %}}",
+            "value_template": f"{{{{ value_json.{sensor_name} }}}}",
             "device": {
                 "identifiers": [device_id],
                 "name": f"Davis Weather Station {station_id}",
@@ -125,18 +152,16 @@ class MQTTPublisher:
                 "manufacturer": "rtldavis",
                 "sw_version": __version__,
             },
-            "availability": [
-                {
-                    "topic": state_topic,
-                    "payload_available": "online",
-                    "payload_not_available": "offline"
-                }
-            ],
+            "availability_topic": availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
             **description,
         }
 
         logger.info("Publishing config for %s to %s", sensor_name, config_topic)
         self.client.publish(config_topic, json.dumps(payload), retain=True)
+        self.client.publish(availability_topic, payload="online", retain=True)
+
 
     def publish(self, message: Dict[str, Any]) -> None:
         station_id = message.get("id")
