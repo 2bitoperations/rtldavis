@@ -4,10 +4,21 @@ import random
 from enum import Enum
 from typing import List, NamedTuple, Dict, Set, Optional
 from dataclasses import dataclass
+import time
+from datetime import datetime, timezone, timedelta
 
 import numpy as np
 
 from . import crc, dsp
+from .decoders import (
+    decode_temperature,
+    decode_humidity,
+    decode_rain_total,
+    decode_rain_rate,
+    decode_supercap,
+    decode_uv,
+    decode_solar,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +137,18 @@ class Parser:
                 continue
             seen.add(data)
 
-            checksum = self.crc.checksum(data[2:])
-            if checksum != 0:
-                logger.debug("CRC check failed: 0x%04X", checksum)
+            # The CRC is calculated on the first 6 bytes of the 8-byte message payload
+            # The last 2 bytes of the 8-byte payload are the CRC itself
+            # The full 10-byte packet from the SDR includes 2 bytes of repeater info
+            # which we are ignoring for now.
+            # Our `pkt.data` is 10 bytes. Let's assume the first 8 are the message.
+            msg_payload = data[:8]
+            
+            # The CRC check in the original Go code `p.Checksum(pkt.Data[2:])` seems
+            # incorrect based on the Davis docs. A full 8-byte check should result in 0.
+            # Let's try that.
+            if self.crc.checksum(msg_payload) != 0:
+                logger.debug("CRC check failed")
                 continue
 
             logger.info("CRC check OK. RSSI: %.2f dB, SNR: %.2f dB", pkt.rssi, pkt.snr)
@@ -144,8 +164,8 @@ class Parser:
             self.current_freq_err += freq_error
             logger.info("Frequency error: %d Hz", freq_error)
 
-            msg_data = data[2:]
-            msg_id = msg_data[0] & 0xF
+            msg_data = msg_payload
+            msg_id = msg_data[0] & 0x7 # 3 bits for ID
 
             if self.id is not None and msg_id != self.id:
                 logger.info("Ignoring message for station ID %d", msg_id)
@@ -177,17 +197,27 @@ class Parser:
                 msgs.append(msg)
                 continue
 
+            # Log raw data for debugging
+            if sensor not in [Sensor.TEMPERATURE, Sensor.WIND_GUST_SPEED]:
+                try:
+                    with open("sensor.log", "a") as f:
+                        ts = time.time()
+                        ct = datetime.fromtimestamp(ts, tz=timezone(timedelta(hours=-5)))
+                        f.write(f"{ts} {ct.isoformat()} {msg_data.hex()}\n")
+                except Exception as e:
+                    logger.error(f"Failed to write to sensor.log: {e}")
+
             msg = self._parse_sensor_data(pkt, msg_id, sensor, msg_data)
 
             raw_hex = msg_data.hex()
-            log_msg = f"Decoded message for station ID {msg.id} (sensor: {msg.sensor.name}):\n"
+            log_msg = f"Decoded message for station ID {msg.id} (sensor: {sensor.name if sensor else 'Unknown'}):\n"
             log_msg += f"  Raw data:      {raw_hex}\n"
             log_msg += f"  - Header:      {raw_hex[0:2]} (Sensor ID: {sensor_id}, Station ID: {msg.id})\n"
             log_msg += f"  - Wind Speed:    {raw_hex[2:4]} ({msg.wind_speed} mph)\n"
             log_msg += f"  - Wind Dir:      {raw_hex[4:6]} ({msg.wind_direction} deg)\n"
 
             sensor_data_hex = raw_hex[6:]
-            log_msg += f"  - Sensor data ({msg.sensor.name}): {sensor_data_hex}\n"
+            log_msg += f"  - Sensor data ({sensor.name if sensor else 'Unknown'}): {sensor_data_hex}\n"
             if msg.temperature is not None:
                 log_msg += f"    - Temperature: {msg.temperature}°F\n"
             if msg.humidity is not None:
@@ -223,48 +253,29 @@ class Parser:
         super_cap_voltage = None
         light = None
 
-        if sensor == Sensor.TEMPERATURE:
-            # Temperature is a 10-bit value in 1/10ths of a degree F
-            temp_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
-            temp = temp_raw / 10.0
-        elif sensor == Sensor.HUMIDITY:
-            # Matches original Go implementation
-            hum_raw = ((msg_data[3] << 8) | msg_data[4]) >> 4
-            humidity = hum_raw / 10.0
-        elif sensor == Sensor.RAIN_RATE:
-            # Rain rate is transmitted as seconds between tips (or similar count)
-            # We assume 0.01 inch tips.
-            # Rate (in/hr) = 3600 / seconds_between_tips * 0.01
-            #              = 36 / seconds_between_tips
-            # If value is 0 or very small, it might mean no rain or error.
-            # We use 12 bits? Or 16?
-            # Using 16 bits to be safe, as 0xFF73 was seen.
-            rain_rate_raw = (msg_data[3] << 8 | msg_data[4])
-            if rain_rate_raw > 0 and rain_rate_raw != 0xFFFF:
-                 # If raw value is very large, rate is very small.
-                 # 3955 -> 0.009 in/hr.
-                 rain_rate = 36.0 / float(rain_rate_raw)
-            else:
-                 rain_rate = 0.0
-        elif sensor == Sensor.RAIN:
-            # Rain is a 15-bit value (7 bits from byte 3, 8 bits from byte 4)
-            rain_total_raw = ((msg_data[3] & 0x7F) << 8) | msg_data[4]
-            rain_total = float(rain_total_raw)
-        elif sensor == Sensor.UV_INDEX:
-            # UV is an 8-bit value
-            uv_index = float(msg_data[3])
-        elif sensor == Sensor.SOLAR_RADIATION:
-            # Solar radiation is a 10-bit value in W/m^2
-            solar_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
-            solar_radiation = float(solar_raw)
-        elif sensor == Sensor.WIND_GUST_SPEED:
-            wind_gust_speed = msg_data[3]
-        elif sensor == Sensor.SUPER_CAP_VOLTAGE:
-            super_cap_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
-            super_cap_voltage = super_cap_raw / 100.0
-        elif sensor == Sensor.LIGHT:
-            light_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
-            light = float(light_raw)
+        try:
+            if sensor == Sensor.TEMPERATURE:
+                temp = decode_temperature(msg_data)
+            elif sensor == Sensor.HUMIDITY:
+                humidity = decode_humidity(msg_data)
+            elif sensor == Sensor.RAIN_RATE:
+                rain_rate = decode_rain_rate(msg_data)
+            elif sensor == Sensor.RAIN:
+                rain_total = decode_rain_total(msg_data)
+            elif sensor == Sensor.UV_INDEX:
+                uv_index = decode_uv(msg_data)
+            elif sensor == Sensor.SOLAR_RADIATION:
+                solar_radiation = decode_solar(msg_data)
+            elif sensor == Sensor.WIND_GUST_SPEED:
+                wind_gust_speed = msg_data[3]
+            elif sensor == Sensor.SUPER_CAP_VOLTAGE:
+                super_cap_voltage = decode_supercap(msg_data)
+            elif sensor == Sensor.LIGHT:
+                # No specific decoder found, keeping previous logic for now
+                light_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
+                light = float(light_raw)
+        except Exception as e:
+            logger.error(f"Failed to decode sensor {sensor.name}: {e}")
 
 
         return Message(

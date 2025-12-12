@@ -27,3 +27,7 @@ data
 /.venv/
 **/__pycache__/
 uv.lock
+sensor.log
+/PyVantagePro/
+#/rtldavis2/
+/davis_vantage/
