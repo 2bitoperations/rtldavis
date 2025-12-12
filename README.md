@@ -23,6 +23,11 @@ To build the project, the following commands will checkout the latest source, in
 
 This will produce the binary `$GOPATH/bin/rtldavis`. For convenience it's common to add `$GOPATH/bin` to the path.
 
+### Testing
+To run the tests, navigate to the project directory and use the `go test` command:
+
+	go test -v ./...
+
 ### Usage
 Available command-line flags are as follows:
 
