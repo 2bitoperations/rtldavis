@@ -138,12 +138,13 @@ class Parser:
         ptr = self.freq_err_tr_ch_ptr[tr][ch]
 
         new_freq_corr = 0
+        # This weighted average logic is ported from the Go implementation
         for i in range(self.max_tr_ch_list):
             error = self.freq_err_tr_ch_list[tr][ch][ptr]
-            new_freq_corr += (error * (i + 1) / self.max_tr_ch_list)
+            new_freq_corr += (error * (i + 1))
             ptr = (ptr + 1) % self.max_tr_ch_list
         
-        self.freq_corr = int(float(new_freq_corr) / self.factor)
+        self.freq_corr = int(float(new_freq_corr) / (self.factor * self.max_tr_ch_list / 2.0))
         return self._hop()
 
     def next_hop(self) -> Hop:
@@ -193,20 +194,14 @@ class Parser:
                 continue
 
             sensor_id = msg_data[0] >> 4
+            sensor: Optional[Sensor] = None
             try:
                 sensor = Sensor(sensor_id)
             except ValueError:
                 logger.warning("Unknown sensor type: 0x%02X. Raw data: %s", sensor_id, msg_data.hex())
-                try:
-                    with open("sensor.log", "a") as f:
-                        ts = time.time()
-                        ct = datetime.fromtimestamp(ts, tz=timezone(timedelta(hours=-5)))
-                        f.write(f"{ts} {ct.isoformat()} {msg_data.hex()}\n")
-                except Exception as e:
-                    logger.error(f"Failed to write to sensor.log: {e}")
-                continue
+                # We proceed with sensor=None so we don't miss the packet for sync purposes
 
-            if sensor not in [Sensor.TEMPERATURE, Sensor.WIND_GUST_SPEED]:
+            if sensor is None or sensor not in [Sensor.TEMPERATURE, Sensor.WIND_GUST_SPEED]:
                 try:
                     with open("sensor.log", "a") as f:
                         ts = time.time()
@@ -219,16 +214,19 @@ class Parser:
             msgs.append(msg)
         return msgs
 
-    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Sensor, msg_data: bytes) -> Message:
+    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Optional[Sensor], msg_data: bytes) -> Message:
         temp, humidity, rain_rate, rain_total, solar_radiation, uv_index, wind_gust_speed, super_cap_voltage, light = (None,) * 9
         
         raw_hex = msg_data.hex()
-        log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor.name}):\n"
+        sensor_name = sensor.name if sensor else f"UNKNOWN(0x{msg_data[0] >> 4:X})"
+        sensor_val = sensor.value if sensor else (msg_data[0] >> 4)
+
+        log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor_name}):\n"
         log_msg += f"  Raw data:      {raw_hex}\n"
-        log_msg += f"  - Header:      {raw_hex[0:2]} (Sensor ID: {sensor.value}, Station ID: {msg_id})\n"
+        log_msg += f"  - Header:      {raw_hex[0:2]} (Sensor ID: {sensor_val}, Station ID: {msg_id})\n"
         log_msg += f"  - Wind Speed:    {raw_hex[2:4]} ({msg_data[1]} mph)\n"
         log_msg += f"  - Wind Dir:      {raw_hex[4:6]} ({msg_data[2]} deg)\n"
-        log_msg += f"  - Sensor data ({sensor.name}): {raw_hex[6:]}\n"
+        log_msg += f"  - Sensor data ({sensor_name}): {raw_hex[6:]}\n"
         
         logger.info(log_msg)
 
@@ -255,7 +253,7 @@ class Parser:
                 light = float(light_raw)
                 logger.info(f"    - Light: {light}")
         except Exception as e:
-            logger.error(f"Failed to decode sensor {sensor.name}: {e}")
+            logger.error(f"Failed to decode sensor {sensor_name}: {e}")
 
         return Message(
             packet=pkt, id=msg_id, sensor=sensor,

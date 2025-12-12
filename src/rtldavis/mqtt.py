@@ -1,5 +1,7 @@
 import logging
 import json
+import time
+import asyncio
 from paho.mqtt import client as mqtt_client
 from typing import Any, Dict, Optional, Set, Tuple
 
@@ -78,6 +80,12 @@ SENSOR_DESCRIPTIONS = {
         "unit_of_measurement": "dB",
         "state_class": "measurement",
     },
+    "seconds_since_last_data": {
+        "device_class": "duration",
+        "unit_of_measurement": "s",
+        "state_class": "measurement",
+        "icon": "mdi:timer-sand",
+    },
 }
 
 
@@ -96,6 +104,8 @@ class MQTTPublisher:
         self.client.on_disconnect = self._on_disconnect
         self._configured_sensors: Set[Tuple[int, str]] = set()
         self._availability_topics: Dict[int, str] = {}
+        self._last_data_time: Optional[float] = None
+        self._timer_task: Optional[asyncio.Task] = None
 
     def connect(self) -> None:
         try:
@@ -103,7 +113,6 @@ class MQTTPublisher:
                 self.client.username_pw_set(self.username, self.password)
             
             # Set Last Will and Testament for all potential station IDs
-            # This is a bit of a hack, but we don't know the station ID until we receive a message
             for i in range(8):
                 availability_topic = f"{self.state_prefix}/{i}/status"
                 self.client.will_set(availability_topic, payload="offline", retain=True)
@@ -115,6 +124,8 @@ class MQTTPublisher:
             raise
 
     def disconnect(self) -> None:
+        if self._timer_task:
+            self._timer_task.cancel()
         for topic in self._availability_topics.values():
             self.client.publish(topic, payload="offline", retain=True)
         self.client.loop_stop()
@@ -162,6 +173,15 @@ class MQTTPublisher:
         self.client.publish(config_topic, json.dumps(payload), retain=True)
         self.client.publish(availability_topic, payload="online", retain=True)
 
+    async def _timer_loop(self, station_id: int):
+        """Periodically publishes the time since the last data packet."""
+        while True:
+            await asyncio.sleep(1)
+            if self._last_data_time:
+                seconds_since = int(time.time() - self._last_data_time)
+                state_topic = f"{self.state_prefix}/{station_id}/state"
+                payload = json.dumps({"seconds_since_last_data": seconds_since})
+                self.client.publish(state_topic, payload, retain=False)
 
     def publish(self, message: Dict[str, Any]) -> None:
         station_id = message.get("id")
@@ -169,8 +189,15 @@ class MQTTPublisher:
             logger.warning("Message is missing station ID, cannot publish.")
             return
 
-        if 'sensor' in message and not isinstance(message['sensor'], str):
+        self._last_data_time = time.time()
+        if self._timer_task is None:
+            self._timer_task = asyncio.create_task(self._timer_loop(station_id))
+
+        if 'sensor' in message and message['sensor'] is not None:
             message['sensor'] = message['sensor'].name
+        else:
+            if 'sensor' in message:
+                del message['sensor']
 
         for sensor_name, value in message.items():
             if value is not None and sensor_name in SENSOR_DESCRIPTIONS:
