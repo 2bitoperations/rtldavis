@@ -3,91 +3,14 @@ import json
 import time
 import asyncio
 from paho.mqtt import client as mqtt_client
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple, Type
 
 from .version import __version__
+from .protocol import Message
+from .sensor_classes import AbstractSensor, MQTTSensorConfig
+from . import decoders
 
 logger = logging.getLogger(__name__)
-
-# Based on Home Assistant MQTT sensor documentation
-# https://www.home-assistant.io/integrations/sensor.mqtt/
-SENSOR_DESCRIPTIONS = {
-    "temperature": {
-        "device_class": "temperature",
-        "unit_of_measurement": "°F",
-        "state_class": "measurement",
-    },
-    "humidity": {
-        "device_class": "humidity",
-        "unit_of_measurement": "%",
-        "state_class": "measurement",
-    },
-    "wind_speed": {
-        "device_class": "wind_speed",
-        "unit_of_measurement": "mph",
-        "state_class": "measurement",
-    },
-    "wind_direction": {
-        "unit_of_measurement": "°",
-        "icon": "mdi:compass-rose",
-    },
-    "rain_rate": {
-        "device_class": "precipitation_intensity",
-        "unit_of_measurement": "in/hr",
-        "state_class": "measurement",
-        "icon": "mdi:weather-rainy",
-    },
-    "rain_total": {
-        "device_class": "precipitation",
-        "unit_of_measurement": "in",
-        "state_class": "total_increasing",
-        "icon": "mdi:weather-pouring",
-    },
-    "solar_radiation": {
-        "device_class": "irradiance",
-        "unit_of_measurement": "W/m²",
-        "state_class": "measurement",
-        "icon": "mdi:weather-sunny",
-    },
-    "uv_index": {
-        "device_class": "uv_index",
-        "unit_of_measurement": "UV Index",
-        "state_class": "measurement",
-        "icon": "mdi:sun-wireless",
-    },
-    "wind_gust_speed": {
-        "device_class": "wind_speed",
-        "unit_of_measurement": "mph",
-        "state_class": "measurement",
-    },
-    "super_cap_voltage": {
-        "device_class": "voltage",
-        "unit_of_measurement": "V",
-        "state_class": "measurement",
-    },
-    "light": {
-        "device_class": "illuminance",
-        "unit_of_measurement": "lx",
-        "state_class": "measurement",
-    },
-    "rssi": {
-        "device_class": "signal_strength",
-        "unit_of_measurement": "dB",
-        "state_class": "measurement",
-    },
-    "snr": {
-        "device_class": "signal_strength",
-        "unit_of_measurement": "dB",
-        "state_class": "measurement",
-    },
-    "seconds_since_last_data": {
-        "device_class": "duration",
-        "unit_of_measurement": "s",
-        "state_class": "measurement",
-        "icon": "mdi:timer-sand",
-    },
-}
-
 
 class MQTTPublisher:
     def __init__(self, broker: str, port: int, discovery_prefix: str, state_prefix: str, client_id: str,
@@ -102,17 +25,37 @@ class MQTTPublisher:
         self.client: mqtt_client.Client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION1, client_id)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
-        self._configured_sensors: Set[Tuple[int, str]] = set()
+        self._configured_stations: Set[int] = set()
         self._availability_topics: Dict[int, str] = {}
         self._last_data_time: Optional[float] = None
         self._timer_task: Optional[asyncio.Task] = None
+        
+        self.sensor_configs: Dict[str, MQTTSensorConfig] = {}
+        
+        logger.debug("Discovering available sensors...")
+        for name, decoder_class in decoders.__dict__.items():
+            if isinstance(decoder_class, type) and issubclass(decoder_class, AbstractSensor) and decoder_class is not AbstractSensor:
+                try:
+                    instance = decoder_class(logging.getLogger())
+                    self.sensor_configs[instance.config.id] = instance.config
+                    logger.debug(f"Discovered sensor: {instance.config.name} ({instance.config.id})")
+                except Exception as e:
+                    logger.error(f"Failed to instantiate sensor decoder {name}: {e}")
+        
+        self.sensor_configs["seconds_since_last_data"] = MQTTSensorConfig(
+            name="Seconds Since Last Data",
+            id="seconds_since_last_data",
+            device_class="duration",
+            unit_of_measurement="s",
+            state_class="measurement",
+            icon="mdi:timer-sand",
+        )
 
     def connect(self) -> None:
         try:
             if self.username and self.password:
                 self.client.username_pw_set(self.username, self.password)
             
-            # Set Last Will and Testament for all potential station IDs
             for i in range(8):
                 availability_topic = f"{self.state_prefix}/{i}/status"
                 self.client.will_set(availability_topic, payload="offline", retain=True)
@@ -142,9 +85,9 @@ class MQTTPublisher:
     def _on_disconnect(self, client: mqtt_client.Client, userdata: Any, rc: int) -> None:
         logger.info("Disconnected from MQTT Broker.")
 
-    def _publish_config(self, station_id: int, sensor_name: str, description: Dict[str, Any]) -> None:
+    def _publish_config(self, station_id: int, config: MQTTSensorConfig) -> None:
         device_id = f"rtldavis_{station_id}"
-        unique_id = f"{device_id}_{sensor_name}"
+        unique_id = f"{device_id}_{config.id}"
 
         config_topic = f"{self.discovery_prefix}/sensor/{unique_id}/config"
         state_topic = f"{self.state_prefix}/{station_id}/state"
@@ -152,10 +95,10 @@ class MQTTPublisher:
         self._availability_topics[station_id] = availability_topic
 
         payload = {
-            "name": f"Davis {sensor_name.replace('_', ' ').title()}",
+            "name": f"Davis {config.name}",
             "unique_id": unique_id,
             "state_topic": state_topic,
-            "value_template": f"{{{{ value_json.{sensor_name} }}}}",
+            "value_template": f"{{{{ value_json.{config.id} }}}}",
             "device": {
                 "identifiers": [device_id],
                 "name": f"Davis Weather Station {station_id}",
@@ -166,10 +109,17 @@ class MQTTPublisher:
             "availability_topic": availability_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
-            **description,
         }
+        if config.device_class:
+            payload["device_class"] = config.device_class
+        if config.unit_of_measurement:
+            payload["unit_of_measurement"] = config.unit_of_measurement
+        if config.state_class:
+            payload["state_class"] = config.state_class
+        if config.icon:
+            payload["icon"] = config.icon
 
-        logger.info("Publishing config for %s to %s", sensor_name, config_topic)
+        logger.info("Publishing config for %s to %s", config.id, config_topic)
         self.client.publish(config_topic, json.dumps(payload), retain=True)
         self.client.publish(availability_topic, payload="online", retain=True)
 
@@ -183,36 +133,34 @@ class MQTTPublisher:
                 payload = json.dumps({"seconds_since_last_data": seconds_since})
                 self.client.publish(state_topic, payload, retain=False)
 
-    def publish(self, message: Dict[str, Any]) -> None:
-        station_id = message.get("id")
-        if station_id is None:
-            logger.warning("Message is missing station ID, cannot publish.")
-            return
-
+    def publish(self, msg: Message) -> None:
+        station_id = msg.id
         self._last_data_time = time.time()
         if self._timer_task is None:
             self._timer_task = asyncio.create_task(self._timer_loop(station_id))
 
-        if 'sensor' in message and message['sensor'] is not None:
-            message['sensor'] = message['sensor'].name
-        else:
-            if 'sensor' in message:
-                del message['sensor']
+        if station_id not in self._configured_stations:
+            logger.info(f"New station ID {station_id} detected. Publishing sensor configurations.")
+            for config in self.sensor_configs.values():
+                self._publish_config(station_id, config)
+            self._configured_stations.add(station_id)
 
-        for sensor_name, value in message.items():
-            if value is not None and sensor_name in SENSOR_DESCRIPTIONS:
-                if (station_id, sensor_name) not in self._configured_sensors:
-                    self._publish_config(station_id, sensor_name, SENSOR_DESCRIPTIONS[sensor_name])
-                    self._configured_sensors.add((station_id, sensor_name))
+        payload = {"id": station_id}
+        if msg.sensor_type:
+            payload["sensor"] = msg.sensor_type.name
+
+        for sensor_id, value in msg.sensor_values.items():
+            if value is None:
+                continue
+            
+            payload[sensor_id] = value
 
         state_topic = f"{self.state_prefix}/{station_id}/state"
-        payload = json.dumps({k: v for k, v in message.items() if v is not None})
+        json_payload = json.dumps(payload)
         
-        logger.info("Publishing message to topic '%s': %s", state_topic, payload)
-        result = self.client.publish(state_topic, payload, retain=False)
+        logger.info("Publishing message to topic '%s': %s", state_topic, json_payload)
+        result = self.client.publish(state_topic, json_payload, retain=False)
 
         status = result[0]
-        if status == 0:
-            logger.debug("Successfully published message to topic '%s'", state_topic)
-        else:
+        if status != 0:
             logger.warning("Failed to send message to topic '%s', status: %d", status, state_topic)

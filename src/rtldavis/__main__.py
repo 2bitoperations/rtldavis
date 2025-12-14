@@ -143,93 +143,69 @@ async def main_async() -> int:
         if args.ppm != 0:
             sdr.freq_correction = args.ppm
 
-        # Start with a random hop to find the initial channel
         hop = p.rand_hop()
         sdr.center_freq = hop.channel_freq + hop.freq_corr
         logger.warning("Tuned to %d Hz (US Band) - Waiting for sync...", sdr.center_freq)
 
-        # Event to signal a packet was received, to start the hop sequence
         packet_received_event = asyncio.Event()
 
         async def hop_task():
-            """Task to follow the station's hopping pattern."""
             MAX_MISSED = 50
             
             while True:
-                # Wait until we are synced before starting the hop loop
                 await packet_received_event.wait()
                 packet_received_event.clear()
                 logger.info("Synced! Starting hop sequence.")
                 
-                # Hop immediately after first packet to get ahead of the transmitter
                 new_hop = p.next_hop()
                 sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
                 logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
                 
-                # Initialize last_hop_time to now
                 last_hop_time = time.time()
                 missed_count = 0
 
                 while True:
-                    # Calculate the deadline for the next packet
-                    # We want to wait for dwell_time + margin
-                    # But we must maintain the cadence relative to last_hop_time
-                    
-                    # Target time for the NEXT hop (if we miss this one)
                     target_next_hop_time = last_hop_time + p.dwell_time
-                    
-                    # Timeout for waiting for the packet
-                    # We give it a bit of margin (e.g. 300ms) past the dwell time
                     timeout = (target_next_hop_time + 0.3) - time.time()
                     
                     if timeout < 0:
-                        # We are already late! Hop immediately.
                         timeout = 0
 
                     try:
                         await asyncio.wait_for(packet_received_event.wait(), timeout=timeout)
                         packet_received_event.clear()
                         
-                        # Packet received! Check if it's too early.
                         actual_time = time.time()
                         drift = actual_time - target_next_hop_time
                         
-                        # If the packet is more than 0.5s early, it's likely a duplicate or glitch.
-                        # The dwell time is ~2.56s, so receiving a packet 2s early is suspicious.
                         if drift < -0.5:
                             logger.warning("Packet received too early (%.4fs). Ignoring as duplicate/glitch.", actual_time - last_hop_time)
-                            # Go back to waiting for the real packet
                             continue
 
                         logger.info("Packet received. Expected: %.4f, Actual: %.4f, Drift: %+.4f s", target_next_hop_time, actual_time, drift)
                         
-                        # Resync our clock.
                         last_hop_time = actual_time
                         missed_count = 0
                     except asyncio.TimeoutError:
-                        # Missed packet. Maintain cadence.
                         missed_count += 1
                         logger.warning("Missed packet %d/%d, hopping anyway.", missed_count, MAX_MISSED)
                         
                         if missed_count >= MAX_MISSED:
                             logger.warning("Too many missed packets. Lost sync. Reverting to scan mode.")
-                            # Pick a random channel to scan
                             hop = p.rand_hop()
                             sdr.center_freq = hop.channel_freq + hop.freq_corr
                             logger.warning("Tuned to %d Hz - Waiting for sync...", sdr.center_freq)
-                            # Break inner loop to go back to waiting for event
                             break
 
                         last_hop_time = target_next_hop_time
                     
-                    # Hop to the next channel
                     new_hop = p.next_hop()
                     sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
                     logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
 
         hop_task_handle = asyncio.create_task(hop_task())
 
-        read_size = p.cfg.block_size * 8 # Read in chunks of 8 blocks of complex samples
+        read_size = p.cfg.block_size * 8
         last_msg_data = None
 
         async for samples in sdr.stream(num_samples_or_bytes=read_size):
@@ -241,7 +217,6 @@ async def main_async() -> int:
                     
                     valid_messages = []
                     for msg in messages:
-                        # Check for duplicates
                         msg_data_bytes = msg.packet.data.tobytes()
                         if msg_data_bytes == last_msg_data:
                             logger.debug("Duplicate packet ignored: %s", msg_data_bytes.hex())
@@ -250,16 +225,12 @@ async def main_async() -> int:
                         valid_messages.append(msg)
                     
                     if valid_messages:
-                        # Signal the hop task that we received a packet
                         packet_received_event.set()
                         
                     for msg in valid_messages:
                         logger.info("Received: %s", msg)
                         if mqtt_publisher:
-                            payload = dataclasses.asdict(msg)
-                            # The 'packet' field is not serializable and not needed
-                            del payload['packet']
-                            mqtt_publisher.publish(payload)
+                            mqtt_publisher.publish(msg)
 
     except asyncio.CancelledError:
         logger.info("Stopping...")

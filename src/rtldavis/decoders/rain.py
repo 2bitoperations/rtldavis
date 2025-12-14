@@ -3,8 +3,9 @@ Decoder for Davis rain total data.
 """
 import logging
 from typing import Optional
+from ..sensor_classes import AbstractSensor, MQTTSensorConfig
 
-class RainTotalDecoder:
+class RainTotalSensor(AbstractSensor):
     """
     A stateful decoder for cumulative rain total from a Davis weather station.
 
@@ -20,10 +21,21 @@ class RainTotalDecoder:
     > byte 3 are used, so the counter will overflow after 0x7F (127).
     """
     def __init__(self, logger: logging.Logger):
-        self.logger = logger
+        super().__init__(logger)
         self.last_clicks: Optional[int] = None
         self.total_clicks: int = 0
         self.rollover_count: int = 0
+
+    @property
+    def config(self) -> MQTTSensorConfig:
+        return MQTTSensorConfig(
+            name="Rain Total",
+            id="rain_total",
+            device_class="precipitation",
+            unit_of_measurement="in",
+            state_class="total_increasing",
+            icon="mdi:weather-pouring",
+        )
 
     def decode(self, data: bytes) -> float:
         """
@@ -65,18 +77,3 @@ class RainTotalDecoder:
         self.logger.info(log_msg)
 
         return total_inches
-
-# For simplicity in the main protocol parser, we'll maintain a global instance.
-# A better approach in a larger application might involve dependency injection
-# or a more structured state management system.
-_rain_total_decoder_instance: Optional[RainTotalDecoder] = None
-
-def decode_rain_total(data: bytes, logger: logging.Logger) -> float:
-    """
-    Decodes cumulative rain total using a stateful decoder instance.
-    """
-    global _rain_total_decoder_instance
-    if _rain_total_decoder_instance is None:
-        _rain_total_decoder_instance = RainTotalDecoder(logger)
-    
-    return _rain_total_decoder_instance.decode(data)

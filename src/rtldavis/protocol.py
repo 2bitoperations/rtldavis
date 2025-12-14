@@ -2,7 +2,7 @@ import logging
 import math
 import random
 from enum import Enum
-from typing import List, NamedTuple, Dict, Set, Optional
+from typing import List, NamedTuple, Dict, Set, Optional, Type
 from dataclasses import dataclass, field
 import time
 from datetime import datetime, timezone, timedelta
@@ -11,20 +11,27 @@ from collections import defaultdict
 import numpy as np
 
 from . import crc, dsp
+from .sensor_classes import AbstractSensor
 from .decoders import (
-    decode_temperature,
-    decode_humidity,
-    decode_rain_total,
-    decode_rain_rate,
-    decode_supercap,
-    decode_uv,
-    decode_solar,
+    TemperatureSensor,
+    HumiditySensor,
+    RainTotalSensor,
+    RainRateSensor,
+    SupercapSensor,
+    UVSensor,
+    SolarSensor,
+    LightSensor,
+    WindSpeedSensor,
+    WindDirectionSensor,
+    WindGustSensor,
+    RSSISensor,
+    SNRSensor,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class Sensor(Enum):
+class SensorType(Enum):
     SUPER_CAP_VOLTAGE = 2
     UV_INDEX = 4
     RAIN_RATE = 5
@@ -40,21 +47,9 @@ class Sensor(Enum):
 class Message:
     packet: dsp.Packet
     id: int
-    sensor: Optional[Sensor]
-    wind_speed: int
-    wind_direction: int
-    temperature: Optional[float] = None
-    humidity: Optional[float] = None
-    rain_rate: Optional[float] = None
-    rain_total: Optional[float] = None
-    solar_radiation: Optional[float] = None
-    uv_index: Optional[float] = None
-    wind_gust_speed: Optional[int] = None
-    super_cap_voltage: Optional[float] = None
-    light: Optional[float] = None
+    sensor_type: Optional[SensorType]
+    sensor_values: Dict[str, Any] = field(default_factory=dict)
     raw_sensor_id: Optional[int] = None
-    rssi: Optional[float] = None
-    snr: Optional[float] = None
 
 
 class Hop(NamedTuple):
@@ -99,6 +94,10 @@ class Parser:
     factor: float = 0.0
     freq_err_tr_ch_list: Dict[int, Dict[int, List[int]]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(lambda: [0] * 10)))
     freq_err_tr_ch_ptr: Dict[int, Dict[int, int]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(int)))
+    
+    # Sensor decoders
+    sensor_decoders: Dict[SensorType, Type[AbstractSensor]] = field(init=False)
+    active_decoders: Dict[Tuple[int, SensorType], AbstractSensor] = field(default_factory=dict)
 
     def __post_init__(self):
         self.cfg = new_packet_config(self.symbol_length)
@@ -106,7 +105,6 @@ class Parser:
         self.crc = crc.CRC("CCITT-16", 0, 0x1021, 0)
         self.dwell_time = 2.5625
         self.channels = [
-            # US frequencies from rtldavis Go port (2019-03-26)
             902419338, 902921088, 903422839, 903924589, 904426340, 904928090,
             905429841, 905931591, 906433342, 906935092, 907436843, 907938593,
             908440344, 908942094, 909443845, 909945595, 910447346, 910949096,
@@ -125,6 +123,26 @@ class Parser:
         ]
         self.hop_idx = random.randint(0, self.channel_count - 1)
         self.factor = (float(self.max_tr_ch_list / 2) + 0.5) * 2.0
+        
+        self.sensor_decoders = {
+            SensorType.TEMPERATURE: TemperatureSensor,
+            SensorType.HUMIDITY: HumiditySensor,
+            SensorType.RAIN: RainTotalSensor,
+            SensorType.RAIN_RATE: RainRateSensor,
+            SensorType.SUPER_CAP_VOLTAGE: SupercapSensor,
+            SensorType.UV_INDEX: UVSensor,
+            SensorType.SOLAR_RADIATION: SolarSensor,
+            SensorType.LIGHT: LightSensor,
+            SensorType.WIND_GUST_SPEED: WindGustSensor,
+        }
+
+    def _get_decoder(self, station_id: int, sensor_type: SensorType) -> AbstractSensor:
+        if (station_id, sensor_type) not in self.active_decoders:
+            if sensor_type not in self.sensor_decoders:
+                raise ValueError(f"No decoder class registered for sensor type {sensor_type.name}")
+            decoder_class = self.sensor_decoders[sensor_type]
+            self.active_decoders[(station_id, sensor_type)] = decoder_class(logger)
+        return self.active_decoders[(station_id, sensor_type)]
 
     def _hop(self) -> Hop:
         channel_idx = self.hop_pattern[self.hop_idx]
@@ -138,7 +156,6 @@ class Parser:
         ptr = self.freq_err_tr_ch_ptr[tr][ch]
 
         new_freq_corr = 0
-        # This weighted average logic is ported from the Go implementation
         for i in range(self.max_tr_ch_list):
             error = self.freq_err_tr_ch_list[tr][ch][ptr]
             new_freq_corr += (error * (i + 1))
@@ -189,78 +206,42 @@ class Parser:
             self.freq_err_tr_ch_ptr[tr][ch] = (ptr + 1) % self.max_tr_ch_list
             self.transmitter = tr
 
-            if self.station_id is not None and msg_id != self.id:
+            if self.station_id is not None and msg_id != self.station_id:
                 logger.info("Ignoring message for station ID %d", msg_id)
                 continue
 
-            sensor_id = msg_data[0] >> 4
-            sensor: Optional[Sensor] = None
-            try:
-                sensor = Sensor(sensor_id)
-            except ValueError:
-                logger.warning("Unknown sensor type: 0x%02X. Raw data: %s", sensor_id, msg_data.hex())
-                # We proceed with sensor=None so we don't miss the packet for sync purposes
-
-            if sensor is None or sensor not in [Sensor.TEMPERATURE, Sensor.WIND_GUST_SPEED]:
-                try:
-                    with open("sensor.log", "a") as f:
-                        ts = time.time()
-                        ct = datetime.fromtimestamp(ts, tz=timezone(timedelta(hours=-5)))
-                        f.write(f"{ts} {ct.isoformat()} {msg_data.hex()}\n")
-                except Exception as e:
-                    logger.error(f"Failed to write to sensor.log: {e}")
-
-            msg = self._parse_sensor_data(pkt, msg_id, sensor, msg_data)
-            msgs.append(msg)
+            msg = self._parse_sensor_data(pkt, msg_id, msg_data)
+            if msg:
+                msgs.append(msg)
         return msgs
 
-    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, sensor: Optional[Sensor], msg_data: bytes) -> Message:
-        temp, humidity, rain_rate, rain_total, solar_radiation, uv_index, wind_gust_speed, super_cap_voltage, light = (None,) * 9
-        
-        raw_hex = msg_data.hex()
-        sensor_name = sensor.name if sensor else f"UNKNOWN(0x{msg_data[0] >> 4:X})"
-        sensor_val = sensor.value if sensor else (msg_data[0] >> 4)
-
-        log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor_name}):\n"
-        log_msg += f"  Raw data:      {raw_hex}\n"
-        log_msg += f"  - Header:      {raw_hex[0:2]} (Sensor ID: {sensor_val}, Station ID: {msg_id})\n"
-        log_msg += f"  - Wind Speed:    {raw_hex[2:4]} ({msg_data[1]} mph)\n"
-        log_msg += f"  - Wind Dir:      {raw_hex[4:6]} ({msg_data[2]} deg)\n"
-        log_msg += f"  - Sensor data ({sensor_name}): {raw_hex[6:]}\n"
-        
-        logger.info(log_msg)
-
+    def _parse_sensor_data(self, pkt: dsp.Packet, msg_id: int, msg_data: bytes) -> Optional[Message]:
+        sensor_id = msg_data[0] >> 4
         try:
-            if sensor == Sensor.TEMPERATURE:
-                temp = decode_temperature(msg_data, logger)
-            elif sensor == Sensor.HUMIDITY:
-                humidity = decode_humidity(msg_data, logger)
-            elif sensor == Sensor.RAIN_RATE:
-                rain_rate = decode_rain_rate(msg_data, logger)
-            elif sensor == Sensor.RAIN:
-                rain_total = decode_rain_total(msg_data, logger)
-            elif sensor == Sensor.UV_INDEX:
-                uv_index = decode_uv(msg_data, logger)
-            elif sensor == Sensor.SOLAR_RADIATION:
-                solar_radiation = decode_solar(msg_data, logger)
-            elif sensor == Sensor.WIND_GUST_SPEED:
-                wind_gust_speed = msg_data[3]
-                logger.info(f"    - Wind Gust: {wind_gust_speed} mph")
-            elif sensor == Sensor.SUPER_CAP_VOLTAGE:
-                super_cap_voltage = decode_supercap(msg_data, logger)
-            elif sensor == Sensor.LIGHT:
-                light_raw = (msg_data[3] << 8 | msg_data[4]) & 0x3FF
-                light = float(light_raw)
-                logger.info(f"    - Light: {light}")
-        except Exception as e:
-            logger.error(f"Failed to decode sensor {sensor_name}: {e}")
+            sensor_type = SensorType(sensor_id)
+        except ValueError:
+            logger.warning("Unknown sensor type: 0x%02X. Raw data: %s", sensor_id, msg_data.hex())
+            return None
+
+        sensor_values = {}
+        
+        # Common values
+        sensor_values['wind_speed'] = WindSpeedSensor(logger).decode(msg_data)
+        sensor_values['wind_direction'] = WindDirectionSensor(logger).decode(msg_data)
+        sensor_values['rssi'] = RSSISensor(logger).decode(pkt.rssi)
+        sensor_values['snr'] = SNRSensor(logger).decode(pkt.snr)
+
+        if sensor_type in self.sensor_decoders:
+            decoder = self._get_decoder(msg_id, sensor_type)
+            value = decoder.decode(msg_data)
+            sensor_values[decoder.config.id] = value
+        else:
+            logger.warning(f"No decoder registered for sensor type {sensor_type.name}")
 
         return Message(
-            packet=pkt, id=msg_id, sensor=sensor,
-            wind_speed=msg_data[1], wind_direction=msg_data[2],
-            temperature=temp, humidity=humidity, rain_rate=rain_rate,
-            rain_total=rain_total, solar_radiation=solar_radiation,
-            uv_index=uv_index, wind_gust_speed=wind_gust_speed,
-            super_cap_voltage=super_cap_voltage, light=light,
-            rssi=pkt.rssi, snr=pkt.snr,
+            packet=pkt,
+            id=msg_id,
+            sensor_type=sensor_type,
+            sensor_values=sensor_values,
+            raw_sensor_id=sensor_id,
         )
