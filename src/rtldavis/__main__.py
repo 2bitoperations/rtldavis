@@ -87,10 +87,7 @@ async def main_async() -> int:
         help="List detected RTL-SDR devices",
     )
     parser.add_argument(
-        "--rtlsdr-serial", help="Select RTL-SDR device by serial number"
-    )
-    parser.add_argument(
-        "--rtlsdr-index", type=int, help="Select RTL-SDR device by index"
+        "--rtlsdr-device", help="Select RTL-SDR device by serial number or index"
     )
     parser.add_argument(
         "--station-id", type=int, help="Davis station ID to filter for (0-7)"
@@ -103,6 +100,9 @@ async def main_async() -> int:
         type=str,
         default="auto",
         help="Tuner gain. Can be 'auto' or a value in tenths of a dB (e.g., 49.6).",
+    )
+    parser.add_argument(
+        "--no-hop", action="store_true", help="Disable frequency hopping for debugging"
     )
     parser.add_argument("--mqtt-broker", help="MQTT broker hostname")
     parser.add_argument("--mqtt-port", type=int, default=1883, help="MQTT broker port")
@@ -164,19 +164,26 @@ async def main_async() -> int:
         return 1
 
     selected_device: Optional[SDRDevice] = None
-    if args.rtlsdr_serial:
+    if args.rtlsdr_device:
+        # Try to match by serial first
         selected_device = next(
-            (d for d in devices if d.serial == args.rtlsdr_serial), None
+            (d for d in devices if d.serial == args.rtlsdr_device), None
         )
-    elif args.rtlsdr_index is not None:
-        selected_device = next(
-            (d for d in devices if d.index == args.rtlsdr_index), None
-        )
+        # If not found, try to match by index
+        if not selected_device:
+            try:
+                idx = int(args.rtlsdr_device)
+                selected_device = next((d for d in devices if d.index == idx), None)
+            except ValueError:
+                pass
     elif len(devices) == 1:
         selected_device = devices[0]
 
     if not selected_device:
-        logger.error("Multiple RTL-SDR devices found. Please specify one.")
+        if args.rtlsdr_device:
+            logger.error(f"RTL-SDR device '{args.rtlsdr_device}' not found.")
+        else:
+            logger.error("Multiple RTL-SDR devices found. Please specify one.")
         return 1
 
     mqtt_publisher: Optional[MQTTPublisher] = None
@@ -194,9 +201,12 @@ async def main_async() -> int:
 
     sdr: Optional[RtlSdrAio] = None
     try:
-        logger.warning(f"Initializing RTL-SDR device with index {selected_device.index}...")
+        logger.warning(f"Initializing RTL-SDR device with index {selected_device.index} (Serial: {selected_device.serial})...")
         sdr = RtlSdrAio(device_index=selected_device.index)
         await asyncio.sleep(1)  # Allow device to settle
+
+        logger.info(f"Tuner: {sdr.get_tuner_type()}")
+        logger.info(f"Gain values: {sdr.get_gains()}")
 
         p = protocol.Parser(symbol_length=14, station_id=args.station_id)
         sdr.sample_rate = p.cfg.sample_rate
@@ -216,6 +226,16 @@ async def main_async() -> int:
         hop = p.rand_hop()
         sdr.center_freq = hop.channel_freq + hop.freq_corr
         logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
+
+        # Readiness check
+        logger.info("Performing readiness check...")
+        try:
+            async for _ in sdr.stream(num_samples_or_bytes=1024):
+                logger.info("Successfully received first chunk of samples.")
+                break
+        except Exception as e:
+            logger.error(f"Readiness check failed: {e}")
+            return 1
 
         packet_received_event = asyncio.Event()
 
@@ -283,13 +303,15 @@ async def main_async() -> int:
 
                         last_hop_time = target_next_hop_time
 
-                    new_hop = p.next_hop()
-                    sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
-                    logger.info(
-                        f"Hopping to {sdr.center_freq} Hz for transmitter {new_hop.transmitter}"
-                    )
+                    if not args.no_hop:
+                        new_hop = p.next_hop()
+                        sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
+                        logger.info(
+                            f"Hopping to {sdr.center_freq} Hz for transmitter {new_hop.transmitter}"
+                        )
 
-        hop_task_handle = asyncio.create_task(hop_task())
+        if not args.no_hop:
+            hop_task_handle = asyncio.create_task(hop_task())
 
         read_size = p.cfg.block_size * 8
         last_msg_data = None
@@ -326,7 +348,7 @@ async def main_async() -> int:
         logger.exception(f"An error occurred: {e}")
         return 1
     finally:
-        if "hop_task_handle" in locals():
+        if "hop_task_handle" in locals() and not args.no_hop:
             hop_task_handle.cancel()
         if sdr:
             try:

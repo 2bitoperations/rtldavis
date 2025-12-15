@@ -70,8 +70,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
     cat <<EOF > "$CONFIG_FILE"
 # rtldavis Configuration
 
-# RTL-SDR Device Index (default: 0)
-RTLDAVIS_DEVICE_INDEX=0
+# RTL-SDR Device (serial or index, default: 0)
+RTLDAVIS_DEVICE="0"
 
 # Frequency Correction in PPM (default: 0)
 RTLDAVIS_PPM=0
@@ -105,7 +105,7 @@ User=root
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$CONFIG_FILE
 ExecStart=$INSTALL_DIR/.venv/bin/python -m rtldavis \\
-    --rtlsdr-index \${RTLDAVIS_DEVICE_INDEX} \\
+    --rtlsdr-device \${RTLDAVIS_DEVICE} \\
     --ppm \${RTLDAVIS_PPM} \\
     --mqtt-broker \${RTLDAVIS_MQTT_BROKER} \\
     --mqtt-port \${RTLDAVIS_MQTT_PORT} \\
