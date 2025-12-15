@@ -22,7 +22,7 @@ class CRC:
         """
         crc: np.uint16 = self.init
         for byte in data:
-            crc = (crc << 8) ^ self.tbl[(crc >> 8) ^ byte]
+            crc = ((crc << 8) & 0xFFFF) ^ self.tbl[(crc >> 8) ^ byte]
         return crc
 
     @staticmethod
