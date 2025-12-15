@@ -6,6 +6,8 @@ from typing import List, Optional
 import subprocess
 import time
 from dataclasses import dataclass
+import multiprocessing
+import queue
 
 from rtlsdr.rtlsdr import RtlSdr
 from rtlsdr.rtlsdraio import RtlSdrAio
@@ -13,6 +15,7 @@ from rtlsdr.rtlsdraio import RtlSdrAio
 from .version import __version__
 from . import protocol
 from .mqtt import MQTTPublisher
+from .worker import worker_main
 
 
 @dataclass
@@ -58,7 +61,7 @@ def list_sdr_devices() -> List[SDRDevice]:
         raise RuntimeError(f"Failed to enumerate RTL-SDR devices: {e}") from e
 
 
-def setup_logging(verbosity: int) -> None:
+def setup_logging(verbosity: int) -> int:
     """Configure logging."""
     if verbosity == 1:
         level = logging.INFO
@@ -70,6 +73,7 @@ def setup_logging(verbosity: int) -> None:
     logging.basicConfig(
         level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
+    return level
 
 
 async def main_async() -> int:
@@ -124,7 +128,7 @@ async def main_async() -> int:
 
     args = parser.parse_args()
 
-    setup_logging(args.verbose)
+    log_level = setup_logging(args.verbose)
     logger = logging.getLogger("rtldavis")
 
     if args.version:
@@ -200,6 +204,7 @@ async def main_async() -> int:
         mqtt_publisher.connect()
 
     sdr: Optional[RtlSdrAio] = None
+    worker_process = None
     try:
         logger.warning(f"Initializing RTL-SDR device with index {selected_device.index} (Serial: {selected_device.serial})...")
         sdr = RtlSdrAio(device_index=selected_device.index)
@@ -227,17 +232,33 @@ async def main_async() -> int:
         sdr.center_freq = hop.channel_freq + hop.freq_corr
         logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
 
-        # Readiness check
-        logger.info("Performing readiness check...")
-        try:
-            async for _ in sdr.stream(num_samples_or_bytes=1024):
-                logger.info("Successfully received first chunk of samples.")
-                break
-        except Exception as e:
-            logger.error(f"Readiness check failed: {e}")
-            return 1
+        # Set up multiprocessing
+        data_queue = multiprocessing.Queue()
+        result_queue = multiprocessing.Queue()
+        
+        worker_process = multiprocessing.Process(
+            target=worker_main,
+            args=(data_queue, result_queue, args.station_id, 14, log_level),
+        )
+        worker_process.start()
 
         packet_received_event = asyncio.Event()
+
+        async def result_queue_reader():
+            while True:
+                try:
+                    msg = await asyncio.to_thread(result_queue.get_nowait)
+                    if msg:
+                        packet_received_event.set()
+                        logger.info(f"Received: {msg}")
+                        if mqtt_publisher:
+                            mqtt_publisher.publish(msg)
+                except queue.Empty:
+                    await asyncio.sleep(0.01)
+                except Exception as e:
+                    logger.error(f"Error reading from result queue: {e}")
+
+        result_reader_task = asyncio.create_task(result_queue_reader())
 
         async def hop_task():
             MAX_MISSED = 50
@@ -314,33 +335,9 @@ async def main_async() -> int:
             hop_task_handle = asyncio.create_task(hop_task())
 
         read_size = p.cfg.block_size * 8
-        last_msg_data = None
-
+        
         async for samples in sdr.stream(num_samples_or_bytes=read_size):
-            for i in range(0, len(samples), p.cfg.block_size):
-                chunk = samples[i : i + p.cfg.block_size]
-                if len(chunk) == p.cfg.block_size:
-                    packets = p.demodulator.demodulate(chunk)
-                    messages = p.parse(packets)
-
-                    valid_messages = []
-                    for msg in messages:
-                        msg_data_bytes = msg.packet.data.tobytes()
-                        if msg_data_bytes == last_msg_data:
-                            logger.debug(
-                                f"Duplicate packet ignored: {msg_data_bytes.hex()}"
-                            )
-                            continue
-                        last_msg_data = msg_data_bytes
-                        valid_messages.append(msg)
-
-                    if valid_messages:
-                        packet_received_event.set()
-
-                    for msg in valid_messages:
-                        logger.info(f"Received: {msg}")
-                        if mqtt_publisher:
-                            mqtt_publisher.publish(msg)
+            data_queue.put(samples)
 
     except asyncio.CancelledError:
         logger.info("Stopping...")
@@ -348,8 +345,15 @@ async def main_async() -> int:
         logger.exception(f"An error occurred: {e}")
         return 1
     finally:
+        if "result_reader_task" in locals():
+            result_reader_task.cancel()
         if "hop_task_handle" in locals() and not args.no_hop:
             hop_task_handle.cancel()
+        if worker_process:
+            data_queue.put(None)  # Sentinel to stop worker
+            worker_process.join(timeout=5)
+            if worker_process.is_alive():
+                worker_process.terminate()
         if sdr:
             try:
                 await sdr.stop()
@@ -365,6 +369,8 @@ async def main_async() -> int:
 
 def main() -> int:
     try:
+        # Set start method for multiprocessing
+        multiprocessing.set_start_method("fork")
         return asyncio.run(main_async())
     except KeyboardInterrupt:
         return 0
