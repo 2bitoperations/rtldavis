@@ -87,7 +87,7 @@ class Parser:
     station_id: Optional[int] = None
     cfg: dsp.PacketConfig = field(init=False)
     demodulator: dsp.Demodulator = field(init=False)
-    crc: crc.CRC = field(init=False)
+    _crc: crc.CRC = field(init=False)
     dwell_time: float = field(init=False)
     channels: List[int] = field(init=False)
     channel_count: int = field(init=False)
@@ -111,7 +111,7 @@ class Parser:
     def __post_init__(self):
         self.cfg = new_packet_config(self.symbol_length)
         self.demodulator = dsp.Demodulator(self.cfg)
-        self.crc = crc.CRC("CCITT-16", 0, 0x1021, 0)
+        self._crc = crc.CRC("CCITT-16", 0, 0x1021, 0)
         self.dwell_time = 2.5625
         self.channels = [
             902419338,
@@ -286,7 +286,7 @@ class Parser:
                 continue
             seen.add(data)
 
-            if self.crc.checksum(data[2:]) != 0:
+            if self._crc.checksum(data[2:]) != 0:
                 logger.debug("CRC check failed")
                 continue
 
