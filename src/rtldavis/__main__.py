@@ -210,7 +210,11 @@ async def main_async() -> int:
         sdr = RtlSdrAio(device_index=selected_device.index)
         await asyncio.sleep(1)  # Allow device to settle
 
-        logger.info(f"librtlsdr version: {librtlsdr.rtlsdr_get_version_string().decode()}")
+        try:
+            logger.info(f"librtlsdr version: {librtlsdr.rtlsdr_get_version_string().decode()}")
+        except AttributeError:
+            logger.warning("librtlsdr version: Unknown (rtlsdr_get_version_string not found - library may be old)")
+        
         logger.info(f"Tuner: {sdr.get_tuner_type()}")
         logger.info(f"Gain values: {sdr.get_gains()}")
 
@@ -236,15 +240,15 @@ async def main_async() -> int:
 
         logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
 
-        # Set up multiprocessing
-        data_queue = multiprocessing.Queue()
-        result_queue = multiprocessing.Queue()
-        
-        worker_process = multiprocessing.Process(
-            target=worker_main,
-            args=(data_queue, result_queue, args.station_id, 14, log_level),
-        )
-        worker_process.start()
+        # Readiness check
+        logger.info("Performing readiness check...")
+        try:
+            async for _ in sdr.stream(num_samples_or_bytes=1024):
+                logger.info("Successfully received first chunk of samples.")
+                break
+        except Exception as e:
+            logger.error(f"Readiness check failed: {e}")
+            return 1
 
         packet_received_event = asyncio.Event()
 
