@@ -28,9 +28,8 @@ class HumiditySensor(AbstractSensor):
         raw_humidity = ((data[4] >> 4) << 8) + data[3]
         humidity = float(raw_humidity) / 10.0
         
-        log_msg = f"    - Raw Value: 0x{raw_humidity:03X} ({raw_humidity})\n"
-        log_msg += f"    - Formula: ((((Byte4 >> 4) << 8) + Byte3) / 10.0)\n"
-        log_msg += f"    - Humidity: {humidity:.1f}%"
-        self.logger.info(log_msg)
+        self.logger.info(f"    - Raw Value: 0x{raw_humidity:03X} ({raw_humidity})")
+        self.logger.info("    - Formula: ((((Byte4 >> 4) << 8) + Byte3) / 10.0)")
+        self.logger.info(f"    - Humidity: {humidity:.1f}%")
 
         return humidity

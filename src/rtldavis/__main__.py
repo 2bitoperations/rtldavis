@@ -81,10 +81,10 @@ async def main_async() -> int:
         print(version_str)
         return 0
 
-    logger.warning("Starting rtldavis %s", __version__)
+    logger.warning(f"Starting rtldavis {__version__}")
     commit_hash, is_dirty = get_git_info()
     if commit_hash:
-        logger.warning("Git commit: %s%s", commit_hash, " (dirty)" if is_dirty else "")
+        logger.warning(f"Git commit: {commit_hash}{' (dirty)' if is_dirty else ''}")
 
 
     try:
@@ -133,7 +133,7 @@ async def main_async() -> int:
 
     sdr: Optional[RtlSdrAio] = None
     try:
-        logger.warning("Initializing RTL-SDR device with index %d...", selected_device['index'])
+        logger.warning(f"Initializing RTL-SDR device with index {selected_device['index']}...")
         sdr = RtlSdrAio(device_index=selected_device['index'])
         
         p = protocol.Parser(symbol_length=14, station_id=args.station_id)
@@ -145,7 +145,7 @@ async def main_async() -> int:
 
         hop = p.rand_hop()
         sdr.center_freq = hop.channel_freq + hop.freq_corr
-        logger.warning("Tuned to %d Hz (US Band) - Waiting for sync...", sdr.center_freq)
+        logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
 
         packet_received_event = asyncio.Event()
 
@@ -159,7 +159,7 @@ async def main_async() -> int:
                 
                 new_hop = p.next_hop()
                 sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
-                logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
+                logger.info(f"Hopping to {sdr.center_freq} Hz for transmitter {new_hop.transmitter}")
                 
                 last_hop_time = time.time()
                 missed_count = 0
@@ -179,29 +179,29 @@ async def main_async() -> int:
                         drift = actual_time - target_next_hop_time
                         
                         if drift < -0.5:
-                            logger.warning("Packet received too early (%.4fs). Ignoring as duplicate/glitch.", actual_time - last_hop_time)
+                            logger.warning(f"Packet received too early ({actual_time - last_hop_time:.4f}s). Ignoring as duplicate/glitch.")
                             continue
 
-                        logger.info("Packet received. Expected: %.4f, Actual: %.4f, Drift: %+.4f s", target_next_hop_time, actual_time, drift)
+                        logger.info(f"Packet received. Expected: {target_next_hop_time:.4f}, Actual: {actual_time:.4f}, Drift: {drift:+.4f} s")
                         
                         last_hop_time = actual_time
                         missed_count = 0
                     except asyncio.TimeoutError:
                         missed_count += 1
-                        logger.warning("Missed packet %d/%d, hopping anyway.", missed_count, MAX_MISSED)
+                        logger.warning(f"Missed packet {missed_count}/{MAX_MISSED}, hopping anyway.")
                         
                         if missed_count >= MAX_MISSED:
                             logger.warning("Too many missed packets. Lost sync. Reverting to scan mode.")
                             hop = p.rand_hop()
                             sdr.center_freq = hop.channel_freq + hop.freq_corr
-                            logger.warning("Tuned to %d Hz - Waiting for sync...", sdr.center_freq)
+                            logger.warning(f"Tuned to {sdr.center_freq} Hz - Waiting for sync...")
                             break
 
                         last_hop_time = target_next_hop_time
                     
                     new_hop = p.next_hop()
                     sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
-                    logger.info("Hopping to %d Hz for transmitter %d", sdr.center_freq, new_hop.transmitter)
+                    logger.info(f"Hopping to {sdr.center_freq} Hz for transmitter {new_hop.transmitter}")
 
         hop_task_handle = asyncio.create_task(hop_task())
 
@@ -219,7 +219,7 @@ async def main_async() -> int:
                     for msg in messages:
                         msg_data_bytes = msg.packet.data.tobytes()
                         if msg_data_bytes == last_msg_data:
-                            logger.debug("Duplicate packet ignored: %s", msg_data_bytes.hex())
+                            logger.debug(f"Duplicate packet ignored: {msg_data_bytes.hex()}")
                             continue
                         last_msg_data = msg_data_bytes
                         valid_messages.append(msg)
@@ -228,14 +228,14 @@ async def main_async() -> int:
                         packet_received_event.set()
                         
                     for msg in valid_messages:
-                        logger.info("Received: %s", msg)
+                        logger.info(f"Received: {msg}")
                         if mqtt_publisher:
                             mqtt_publisher.publish(msg)
 
     except asyncio.CancelledError:
         logger.info("Stopping...")
     except Exception as e:
-        logger.exception("An error occurred: %s", str(e))
+        logger.exception(f"An error occurred: {e}")
         return 1
     finally:
         if 'hop_task_handle' in locals():

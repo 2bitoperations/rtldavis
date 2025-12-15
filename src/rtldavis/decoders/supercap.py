@@ -32,9 +32,8 @@ class SupercapSensor(AbstractSensor):
         raw_voltage = (data[3] << 2) + ((data[4] & 0xC0) >> 6)
         voltage = float(raw_voltage) / 100.0
         
-        log_msg = f"    - Raw Value: 0x{raw_voltage:03X} ({raw_voltage})\n"
-        log_msg += f"    - Formula: ((Byte3 << 2) + ((Byte4 & 0xC0) >> 6)) / 100.0\n"
-        log_msg += f"    - Supercap Voltage: {voltage:.2f} V"
-        self.logger.info(log_msg)
+        self.logger.info(f"    - Raw Value: 0x{raw_voltage:03X} ({raw_voltage})")
+        self.logger.info("    - Formula: ((Byte3 << 2) + ((Byte4 & 0xC0) >> 6)) / 100.0")
+        self.logger.info(f"    - Supercap Voltage: {voltage:.2f} V")
 
         return voltage

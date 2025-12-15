@@ -22,7 +22,11 @@ class LightSensor(AbstractSensor):
         """
         Decodes light from a raw data packet.
         """
-        light_raw = (data[3] << 8 | data[4]) & 0x3FF
-        light = float(light_raw)
+        raw_light = (data[3] << 2) + ((data[4] & 0xC0) >> 6)
+        light = float(raw_light)
+        
+        self.logger.info(f"    - Raw Value: 0x{raw_light:03X} ({raw_light})")
+        self.logger.info("    - Formula: (Byte3 * 4) + ((Byte4 & 0xC0) / 64)")
         self.logger.info(f"    - Light: {light}")
+
         return light

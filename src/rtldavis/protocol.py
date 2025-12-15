@@ -186,7 +186,7 @@ class Parser:
                 logger.debug("CRC check failed")
                 continue
 
-            logger.info("CRC check OK. RSSI: %.2f dB, SNR: %.2f dB", pkt.rssi, pkt.snr)
+            logger.info(f"CRC check OK. RSSI: {pkt.rssi:.2f} dB, SNR: {pkt.snr:.2f} dB")
 
             preamble_start = pkt.index
             preamble_end = pkt.index + self.cfg.preamble_length
@@ -194,7 +194,7 @@ class Parser:
             
             mean = np.mean(preamble_samples)
             freq_err = -int((mean * float(self.cfg.sample_rate)) / (2 * math.pi))
-            logger.info("Frequency error: %d Hz", freq_err)
+            logger.info(f"Frequency error: {freq_err} Hz")
 
             msg_data = data[2:]
             msg_id = msg_data[0] & 0x7
@@ -207,7 +207,7 @@ class Parser:
             self.transmitter = tr
 
             if self.station_id is not None and msg_id != self.station_id:
-                logger.info("Ignoring message for station ID %d", msg_id)
+                logger.info(f"Ignoring message for station ID {msg_id}, Raw data: {msg_data.hex()}")
                 continue
 
             msg = self._parse_sensor_data(pkt, msg_id, msg_data)
@@ -220,8 +220,10 @@ class Parser:
         try:
             sensor_type = SensorType(sensor_id)
         except ValueError:
-            logger.warning("Unknown sensor type: 0x%02X. Raw data: %s", sensor_id, msg_data.hex())
+            logger.warning(f"Unknown sensor type: 0x{sensor_id:02X}. Raw data: {msg_data.hex()}")
             return None
+
+        logger.info(f"Processing message for station ID {msg_id}, sensor type {sensor_type.name} ({sensor_id}), hex data: {msg_data.hex()}")
 
         sensor_values = {}
         

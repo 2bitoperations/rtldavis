@@ -14,7 +14,7 @@ class RainRateSensor(AbstractSensor):
             name="Rain Rate",
             id="rain_rate",
             device_class="precipitation_intensity",
-            unit_of_measurement="in/hr",
+            unit_of_measurement="in/h",
             state_class="measurement",
             icon="mdi:weather-rainy",
         )
@@ -47,22 +47,20 @@ class RainRateSensor(AbstractSensor):
         # raw_val is a 10-bit number representing the base time interval.
         raw_val = (((data[4] & 0x30) >> 4) * 256) + data[3]
         
-        log_msg = f"    - Raw time value: {raw_val}\n"
+        self.logger.info(f"    - Raw time value: {raw_val}")
 
         if data[3] == 0xFF:
-            log_msg += "    - No rain detected (Byte3 == 0xFF)"
-            self.logger.info(log_msg)
+            self.logger.info("    - No rain detected (Byte3 == 0xFF)")
             return 0.0
 
         if raw_val == 0:
-            log_msg += "    - No rain detected (raw time value is 0)"
-            self.logger.info(log_msg)
+            self.logger.info("    - No rain detected (raw time value is 0)")
             return 0.0
 
         # Bit 6 of Byte4 indicates light or strong rain.
         is_strong_rain = (data[4] & 0x40) != 0
         rain_type = "Strong" if is_strong_rain else "Light"
-        log_msg += f"    - Rain Type: {rain_type}\n"
+        self.logger.info(f"    - Rain Type: {rain_type}")
 
         if is_strong_rain:
             # For strong rain, the time between clicks is divided by 16.
@@ -71,12 +69,11 @@ class RainRateSensor(AbstractSensor):
             # For light rain, the time is the raw value.
             time_between_clicks = float(raw_val)
 
-        log_msg += f"    - Time between clicks: {time_between_clicks:.4f} s\n"
+        self.logger.info(f"    - Time between clicks: {time_between_clicks:.4f} s")
 
         # inches_per_hour = 36 / time_between_clicks
         inches_per_hour = 36.0 / time_between_clicks
 
-        log_msg += f"    - Rain Rate: {inches_per_hour:.3f} in/hr"
-        self.logger.info(log_msg)
+        self.logger.info(f"    - Rain Rate: {inches_per_hour:.3f} in/hr")
         
         return inches_per_hour

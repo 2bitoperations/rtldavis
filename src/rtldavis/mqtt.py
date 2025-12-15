@@ -63,7 +63,7 @@ class MQTTPublisher:
             self.client.connect(self.broker, self.port)
             self.client.loop_start()
         except Exception as e:
-            logger.error("Failed to connect to MQTT broker: %s", e)
+            logger.error(f"Failed to connect to MQTT broker: {e}")
             raise
 
     def disconnect(self) -> None:
@@ -76,11 +76,9 @@ class MQTTPublisher:
 
     def _on_connect(self, client: mqtt_client.Client, userdata: Any, flags: Dict[str, Any], rc: int) -> None:
         if rc == 0:
-            logger.info("Successfully connected to MQTT Broker at %s:%d with client ID '%s'",
-                       self.broker, self.port, self.client_id)
+            logger.info(f"Successfully connected to MQTT Broker at {self.broker}:{self.port} with client ID '{self.client_id}'")
         else:
-            logger.error("Failed to connect to MQTT Broker at %s:%d, return code: %d",
-                        self.broker, self.port, rc)
+            logger.error(f"Failed to connect to MQTT Broker at {self.broker}:{self.port}, return code: {rc}")
 
     def _on_disconnect(self, client: mqtt_client.Client, userdata: Any, rc: int) -> None:
         logger.info("Disconnected from MQTT Broker.")
@@ -98,7 +96,7 @@ class MQTTPublisher:
             "name": f"Davis {config.name}",
             "unique_id": unique_id,
             "state_topic": state_topic,
-            "value_template": f"{{{{ value_json.{config.id} }}}}",
+            "value_template": f"{{% if value_json.{config.id} is not none %}}{{{{ value_json.{config.id} }}}}{{% endif %}}",
             "device": {
                 "identifiers": [device_id],
                 "name": f"Davis Weather Station {station_id}",
@@ -112,14 +110,14 @@ class MQTTPublisher:
         }
         if config.device_class:
             payload["device_class"] = config.device_class
-        if config.unit_of_measurement:
+        if config.unit_of_measurement and config.device_class != "uv_index":
             payload["unit_of_measurement"] = config.unit_of_measurement
         if config.state_class:
             payload["state_class"] = config.state_class
         if config.icon:
             payload["icon"] = config.icon
 
-        logger.info("Publishing config for %s to %s", config.id, config_topic)
+        logger.info(f"Publishing config for {config.id} to {config_topic}")
         self.client.publish(config_topic, json.dumps(payload), retain=True)
         self.client.publish(availability_topic, payload="online", retain=True)
 
@@ -158,9 +156,9 @@ class MQTTPublisher:
         state_topic = f"{self.state_prefix}/{station_id}/state"
         json_payload = json.dumps(payload)
         
-        logger.info("Publishing message to topic '%s': %s", state_topic, json_payload)
+        logger.info(f"Publishing message to topic '{state_topic}': {json_payload}")
         result = self.client.publish(state_topic, json_payload, retain=False)
 
         status = result[0]
         if status != 0:
-            logger.warning("Failed to send message to topic '%s', status: %d", status, state_topic)
+            logger.warning(f"Failed to send message to topic '{state_topic}', status: {status}")

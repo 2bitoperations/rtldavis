@@ -47,10 +47,9 @@ class SolarSensor(AbstractSensor):
 
         solar_rad = round(((value_shifted) - 4) / 2.27)
         
-        log_msg = f"    - Raw 16-bit Value: 0x{raw_value:04X}\n"
-        log_msg += f"    - Value >> 4: 0x{value_shifted:03X} ({value_shifted})\n"
-        log_msg += f"    - Formula: round(((VALUE >> 4) - 4) / 2.27)\n"
-        log_msg += f"    - Solar Radiation: {solar_rad:.1f} W/m^2"
-        self.logger.info(log_msg)
+        self.logger.info(f"    - Raw 16-bit Value: 0x{raw_value:04X}")
+        self.logger.info(f"    - Value >> 4: 0x{value_shifted:03X} ({value_shifted})")
+        self.logger.info("    - Formula: round(((VALUE >> 4) - 4) / 2.27)")
+        self.logger.info(f"    - Solar Radiation: {solar_rad:.1f} W/m^2")
 
         return float(solar_rad)

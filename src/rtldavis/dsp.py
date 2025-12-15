@@ -143,7 +143,7 @@ class Demodulator:
                 idx = view_str.find(preamble_str, start)
                 if idx == -1:
                     break
-                logger.debug("Preamble found at index %d (offset %d)", idx, offset)
+                logger.debug(f"Preamble found at index {idx} (offset {offset})")
                 indices.append(idx * self.cfg.symbol_length + offset)
                 start = idx + 1
                 
@@ -163,7 +163,7 @@ class Demodulator:
             
             pkt_bytes = bytes(pkt)
             if pkt_bytes not in seen:
-                logger.debug("Sliced packet: %s", pkt_bytes.hex())
+                logger.debug(f"Sliced packet: {pkt_bytes.hex()}")
                 seen.add(pkt_bytes)
                 
                 # Calculate RSSI and SNR

@@ -45,24 +45,24 @@ class RainTotalSensor(AbstractSensor):
         """
         current_clicks = data[3] & 0x7F
         
-        log_msg = f"    - Raw Click Counter (Byte3 & 0x7F): {current_clicks}\n"
+        self.logger.info(f"    - Raw Click Counter (Byte3 & 0x7F): {current_clicks}")
 
         if self.last_clicks is None:
             # First reading, initialize the total.
             self.total_clicks = current_clicks
-            log_msg += "    - Initializing rain total.\n"
+            self.logger.info("    - Initializing rain total.")
         else:
             if current_clicks < self.last_clicks:
                 # Rollover detected. The counter has wrapped from 127 to 0.
                 self.rollover_count += 1
                 # Add the clicks from before the rollover plus the new clicks.
                 clicks_since_last = (128 - self.last_clicks) + current_clicks
-                log_msg += f"    - Rollover detected! (Last: {self.last_clicks}, Current: {current_clicks})\n"
-                log_msg += f"    - Clicks since last reading: (128 - {self.last_clicks}) + {current_clicks} = {clicks_since_last}\n"
+                self.logger.info(f"    - Rollover detected! (Last: {self.last_clicks}, Current: {current_clicks})")
+                self.logger.info(f"    - Clicks since last reading: (128 - {self.last_clicks}) + {current_clicks} = {clicks_since_last}")
             else:
                 # Normal increase.
                 clicks_since_last = current_clicks - self.last_clicks
-                log_msg += f"    - Clicks since last reading: {current_clicks} - {self.last_clicks} = {clicks_since_last}\n"
+                self.logger.info(f"    - Clicks since last reading: {current_clicks} - {self.last_clicks} = {clicks_since_last}")
             
             if clicks_since_last > 0:
                 self.total_clicks += clicks_since_last
@@ -72,8 +72,7 @@ class RainTotalSensor(AbstractSensor):
         # Each click is 0.01 inches of rain for US models.
         total_inches = self.total_clicks * 0.01
 
-        log_msg += f"    - Cumulative Clicks: {self.total_clicks}\n"
-        log_msg += f"    - Total Rainfall: {total_inches:.2f} inches"
-        self.logger.info(log_msg)
+        self.logger.info(f"    - Cumulative Clicks: {self.total_clicks}")
+        self.logger.info(f"    - Total Rainfall: {total_inches:.2f} inches")
 
         return total_inches
