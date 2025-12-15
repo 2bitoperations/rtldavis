@@ -1,8 +1,10 @@
 """
 Decoder for Davis solar radiation data.
 """
+
 import logging
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
+
 
 class SolarSensor(AbstractSensor):
     def __init__(self, logger: logging.Logger):
@@ -37,16 +39,16 @@ class SolarSensor(AbstractSensor):
             return 0.0
 
         raw_value = (data[3] << 8) + data[4]
-        
+
         # The lower nibble of Byte4 is not used
         value_shifted = raw_value >> 4
-        
+
         # The '0' value is represented by 4
         if value_shifted <= 4:
             return 0.0
 
         solar_rad = round(((value_shifted) - 4) / 2.27)
-        
+
         self.logger.info(f"    - Raw 16-bit Value: 0x{raw_value:04X}")
         self.logger.info(f"    - Value >> 4: 0x{value_shifted:03X} ({value_shifted})")
         self.logger.info("    - Formula: round(((VALUE >> 4) - 4) / 2.27)")

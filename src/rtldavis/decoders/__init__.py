@@ -6,4 +6,10 @@ from .supercap import SupercapSensor
 from .uv import UVSensor
 from .solar import SolarSensor
 from .light import LightSensor
-from .common import WindSpeedSensor, WindDirectionSensor, WindGustSensor, RSSISensor, SNRSensor
+from .common import (
+    WindSpeedSensor,
+    WindDirectionSensor,
+    WindGustSensor,
+    RSSISensor,
+    SNRSensor,
+)

@@ -1,10 +1,11 @@
 import numpy as np
-from typing import List
+
 
 class CRC:
     """
     A class for calculating CRC-16-CCITT checksums.
     """
+
     def __init__(self, name: str, init: int, poly: int, residue: int) -> None:
         self.name: str = name
         self.init: np.uint16 = np.uint16(init)

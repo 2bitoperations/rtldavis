@@ -1,8 +1,10 @@
 """
 Decoder for Davis UV index data.
 """
+
 import logging
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
+
 
 class UVSensor(AbstractSensor):
     def __init__(self, logger: logging.Logger):
@@ -36,7 +38,7 @@ class UVSensor(AbstractSensor):
 
         raw_uv = ((data[3] << 8) + data[4]) >> 6
         uv_index = float(raw_uv) / 50.0
-        
+
         self.logger.info(f"    - Raw Value: 0x{raw_uv:03X} ({raw_uv})")
         self.logger.info("    - Formula: (((Byte3 << 8) + Byte4) >> 6) / 50.0")
         self.logger.info(f"    - UV Index: {uv_index:.1f}")

@@ -3,6 +3,7 @@ from typing import Optional, Any
 from abc import ABC, abstractmethod
 import logging
 
+
 @dataclass
 class MQTTSensorConfig:
     name: str
@@ -11,6 +12,7 @@ class MQTTSensorConfig:
     unit_of_measurement: Optional[str] = None
     state_class: Optional[str] = None
     icon: Optional[str] = None
+
 
 class AbstractSensor(ABC):
     def __init__(self, logger: logging.Logger):

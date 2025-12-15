@@ -1,8 +1,9 @@
 """
 Decoders for common (simple) sensor types.
 """
-import logging
+
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
+
 
 class WindSpeedSensor(AbstractSensor):
     @property
@@ -20,6 +21,7 @@ class WindSpeedSensor(AbstractSensor):
         self.logger.info(f"    - Wind Speed: {val} mph")
         return val
 
+
 class WindDirectionSensor(AbstractSensor):
     @property
     def config(self) -> MQTTSensorConfig:
@@ -34,6 +36,7 @@ class WindDirectionSensor(AbstractSensor):
         val = data[2]
         self.logger.info(f"    - Wind Direction: {val}°")
         return val
+
 
 class WindGustSensor(AbstractSensor):
     @property
@@ -51,6 +54,7 @@ class WindGustSensor(AbstractSensor):
         self.logger.info(f"    - Wind Gust: {val} mph")
         return val
 
+
 class RSSISensor(AbstractSensor):
     @property
     def config(self) -> MQTTSensorConfig:
@@ -64,6 +68,7 @@ class RSSISensor(AbstractSensor):
 
     def decode(self, data: float) -> float:
         return data
+
 
 class SNRSensor(AbstractSensor):
     @property

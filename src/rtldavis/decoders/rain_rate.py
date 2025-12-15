@@ -1,8 +1,10 @@
 """
 Decoder for Davis rain rate data.
 """
+
 import logging
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
+
 
 class RainRateSensor(AbstractSensor):
     def __init__(self, logger: logging.Logger):
@@ -46,7 +48,7 @@ class RainRateSensor(AbstractSensor):
         # Byte 4 bits 4 & 5 are the high 2 bits.
         # raw_val is a 10-bit number representing the base time interval.
         raw_val = (((data[4] & 0x30) >> 4) * 256) + data[3]
-        
+
         self.logger.info(f"    - Raw time value: {raw_val}")
 
         if data[3] == 0xFF:
@@ -75,5 +77,5 @@ class RainRateSensor(AbstractSensor):
         inches_per_hour = 36.0 / time_between_clicks
 
         self.logger.info(f"    - Rain Rate: {inches_per_hour:.3f} in/hr")
-        
+
         return inches_per_hour

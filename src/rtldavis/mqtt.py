@@ -3,7 +3,7 @@ import json
 import time
 import asyncio
 from paho.mqtt import client as mqtt_client
-from typing import Any, Dict, Optional, Set, Tuple, Type
+from typing import Any, Dict, Optional, Set
 
 from .version import __version__
 from .protocol import Message
@@ -12,9 +12,18 @@ from . import decoders
 
 logger = logging.getLogger(__name__)
 
+
 class MQTTPublisher:
-    def __init__(self, broker: str, port: int, discovery_prefix: str, state_prefix: str, client_id: str,
-                 username: Optional[str] = None, password: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        broker: str,
+        port: int,
+        discovery_prefix: str,
+        state_prefix: str,
+        client_id: str,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> None:
         self.broker: str = broker
         self.port: int = port
         self.discovery_prefix: str = discovery_prefix
@@ -22,26 +31,34 @@ class MQTTPublisher:
         self.client_id: str = client_id
         self.username: Optional[str] = username
         self.password: Optional[str] = password
-        self.client: mqtt_client.Client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION1, client_id)
+        self.client: mqtt_client.Client = mqtt_client.Client(
+            mqtt_client.CallbackAPIVersion.VERSION1, client_id
+        )
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self._configured_stations: Set[int] = set()
         self._availability_topics: Dict[int, str] = {}
         self._last_data_time: Optional[float] = None
         self._timer_task: Optional[asyncio.Task] = None
-        
+
         self.sensor_configs: Dict[str, MQTTSensorConfig] = {}
-        
+
         logger.debug("Discovering available sensors...")
         for name, decoder_class in decoders.__dict__.items():
-            if isinstance(decoder_class, type) and issubclass(decoder_class, AbstractSensor) and decoder_class is not AbstractSensor:
+            if (
+                isinstance(decoder_class, type)
+                and issubclass(decoder_class, AbstractSensor)
+                and decoder_class is not AbstractSensor
+            ):
                 try:
                     instance = decoder_class(logging.getLogger())
                     self.sensor_configs[instance.config.id] = instance.config
-                    logger.debug(f"Discovered sensor: {instance.config.name} ({instance.config.id})")
+                    logger.debug(
+                        f"Discovered sensor: {instance.config.name} ({instance.config.id})"
+                    )
                 except Exception as e:
                     logger.error(f"Failed to instantiate sensor decoder {name}: {e}")
-        
+
         self.sensor_configs["seconds_since_last_data"] = MQTTSensorConfig(
             name="Seconds Since Last Data",
             id="seconds_since_last_data",
@@ -55,7 +72,7 @@ class MQTTPublisher:
         try:
             if self.username and self.password:
                 self.client.username_pw_set(self.username, self.password)
-            
+
             for i in range(8):
                 availability_topic = f"{self.state_prefix}/{i}/status"
                 self.client.will_set(availability_topic, payload="offline", retain=True)
@@ -74,13 +91,21 @@ class MQTTPublisher:
         self.client.loop_stop()
         self.client.disconnect()
 
-    def _on_connect(self, client: mqtt_client.Client, userdata: Any, flags: Dict[str, Any], rc: int) -> None:
+    def _on_connect(
+        self, client: mqtt_client.Client, userdata: Any, flags: Dict[str, Any], rc: int
+    ) -> None:
         if rc == 0:
-            logger.info(f"Successfully connected to MQTT Broker at {self.broker}:{self.port} with client ID '{self.client_id}'")
+            logger.info(
+                f"Successfully connected to MQTT Broker at {self.broker}:{self.port} with client ID '{self.client_id}'"
+            )
         else:
-            logger.error(f"Failed to connect to MQTT Broker at {self.broker}:{self.port}, return code: {rc}")
+            logger.error(
+                f"Failed to connect to MQTT Broker at {self.broker}:{self.port}, return code: {rc}"
+            )
 
-    def _on_disconnect(self, client: mqtt_client.Client, userdata: Any, rc: int) -> None:
+    def _on_disconnect(
+        self, client: mqtt_client.Client, userdata: Any, rc: int
+    ) -> None:
         logger.info("Disconnected from MQTT Broker.")
 
     def _publish_config(self, station_id: int, config: MQTTSensorConfig) -> None:
@@ -138,7 +163,9 @@ class MQTTPublisher:
             self._timer_task = asyncio.create_task(self._timer_loop(station_id))
 
         if station_id not in self._configured_stations:
-            logger.info(f"New station ID {station_id} detected. Publishing sensor configurations.")
+            logger.info(
+                f"New station ID {station_id} detected. Publishing sensor configurations."
+            )
             for config in self.sensor_configs.values():
                 self._publish_config(station_id, config)
             self._configured_stations.add(station_id)
@@ -150,15 +177,17 @@ class MQTTPublisher:
         for sensor_id, value in msg.sensor_values.items():
             if value is None:
                 continue
-            
+
             payload[sensor_id] = value
 
         state_topic = f"{self.state_prefix}/{station_id}/state"
         json_payload = json.dumps(payload)
-        
+
         logger.info(f"Publishing message to topic '{state_topic}': {json_payload}")
         result = self.client.publish(state_topic, json_payload, retain=False)
 
         status = result[0]
         if status != 0:
-            logger.warning(f"Failed to send message to topic '{state_topic}', status: {status}")
+            logger.warning(
+                f"Failed to send message to topic '{state_topic}', status: {status}"
+            )

@@ -11,10 +11,11 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 keywords = ["rtl-sdr", "davis", "weather", "sdr", "receiver", "dsp"]
 dependencies = [
-    "pyrtlsdr>=0.3.0",
-    "numpy>=1.24.0",
-    "setuptools>=40.8.0",
-    "paho-mqtt>=1.6.1",
+    "pyrtlsdr~=0.3.0",
+    "numpy~=1.26.0",
+    "setuptools~=40.8.0",
+    "paho-mqtt~=1.6.1",
+    "ruff~=0.14.9"
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
