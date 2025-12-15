@@ -240,22 +240,22 @@ async def main_async() -> int:
 
         logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
 
-        # Readiness check
-        logger.info("Performing readiness check...")
-        try:
-            async for _ in sdr.stream(num_samples_or_bytes=1024):
-                logger.info("Successfully received first chunk of samples.")
-                break
-        except Exception as e:
-            logger.error(f"Readiness check failed: {e}")
-            return 1
+        # Set up multiprocessing
+        data_queue = multiprocessing.Queue()
+        result_queue = multiprocessing.Queue()
+        
+        worker_process = multiprocessing.Process(
+            target=worker_main,
+            args=(data_queue, result_queue, args.station_id, 14, log_level),
+        )
+        worker_process.start()
 
         packet_received_event = asyncio.Event()
 
-        async def result_queue_reader():
+        async def result_queue_reader(q: multiprocessing.Queue):
             while True:
                 try:
-                    msg = await asyncio.to_thread(result_queue.get_nowait)
+                    msg = await asyncio.to_thread(q.get_nowait)
                     if msg:
                         packet_received_event.set()
                         logger.info(f"Received: {msg}")
@@ -266,7 +266,7 @@ async def main_async() -> int:
                 except Exception as e:
                     logger.error(f"Error reading from result queue: {e}")
 
-        result_reader_task = asyncio.create_task(result_queue_reader())
+        result_reader_task = asyncio.create_task(result_queue_reader(result_queue))
 
         async def hop_task():
             MAX_MISSED = 50
