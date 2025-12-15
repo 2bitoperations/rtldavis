@@ -98,6 +98,12 @@ async def main_async() -> int:
     parser.add_argument(
         "--ppm", type=int, default=0, help="Frequency correction in PPM"
     )
+    parser.add_argument(
+        "--gain",
+        type=str,
+        default="auto",
+        help="Tuner gain. Can be 'auto' or a value in tenths of a dB (e.g., 49.6).",
+    )
     parser.add_argument("--mqtt-broker", help="MQTT broker hostname")
     parser.add_argument("--mqtt-port", type=int, default=1883, help="MQTT broker port")
     parser.add_argument(
@@ -190,10 +196,19 @@ async def main_async() -> int:
     try:
         logger.warning(f"Initializing RTL-SDR device with index {selected_device.index}...")
         sdr = RtlSdrAio(device_index=selected_device.index)
+        await asyncio.sleep(1)  # Allow device to settle
 
         p = protocol.Parser(symbol_length=14, station_id=args.station_id)
         sdr.sample_rate = p.cfg.sample_rate
-        sdr.gain = "auto"
+        
+        if args.gain.lower() == 'auto':
+            sdr.gain = 'auto'
+        else:
+            try:
+                sdr.gain = float(args.gain)
+            except ValueError:
+                logger.error(f"Invalid gain value: {args.gain}. Must be 'auto' or a number.")
+                return 1
 
         if args.ppm != 0:
             sdr.freq_correction = args.ppm
