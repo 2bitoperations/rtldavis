@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import multiprocessing
 import queue
 
-from rtlsdr.rtlsdr import RtlSdr
+from rtlsdr.rtlsdr import RtlSdr, librtlsdr
 from rtlsdr.rtlsdraio import RtlSdrAio
 
 from .version import __version__
@@ -210,6 +210,7 @@ async def main_async() -> int:
         sdr = RtlSdrAio(device_index=selected_device.index)
         await asyncio.sleep(1)  # Allow device to settle
 
+        logger.info(f"librtlsdr version: {librtlsdr.rtlsdr_get_version_string().decode()}")
         logger.info(f"Tuner: {sdr.get_tuner_type()}")
         logger.info(f"Gain values: {sdr.get_gains()}")
 
@@ -230,6 +231,9 @@ async def main_async() -> int:
 
         hop = p.rand_hop()
         sdr.center_freq = hop.channel_freq + hop.freq_corr
+        
+        logger.info(f"SDR Initial State: Gain={sdr.get_gain()}, Sample Rate={sdr.get_sample_rate()}, Center Freq={sdr.get_center_freq()}, Freq Correction={sdr.get_freq_correction()}ppm")
+
         logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
 
         # Set up multiprocessing
