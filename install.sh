@@ -103,6 +103,9 @@ RTLDAVIS_GAIN="auto"
 # Disable frequency hopping (default: false)
 # RTLDAVIS_NO_HOP=true
 
+# Verbose logging (default: false)
+# RTLDAVIS_VERBOSE=true
+
 # MQTT Broker Settings
 RTLDAVIS_MQTT_BROKER="localhost"
 RTLDAVIS_MQTT_PORT=1883
@@ -131,19 +134,22 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$CONFIG_FILE
-ExecStart=$INSTALL_DIR/.venv/bin/python -m rtldavis \\
-    --rtlsdr-device \${RTLDAVIS_DEVICE} \\
-    --ppm \${RTLDAVIS_PPM} \\
-    --gain \${RTLDAVIS_GAIN} \\
+# Force usage of /usr/local/lib for newer librtlsdr
+Environment="LD_LIBRARY_PATH=/usr/local/lib"
+ExecStart=/bin/bash -c '$INSTALL_DIR/.venv/bin/python -m rtldavis \\
+    --rtlsdr-device "\${RTLDAVIS_DEVICE}" \\
+    --ppm "\${RTLDAVIS_PPM}" \\
+    --gain "\${RTLDAVIS_GAIN}" \\
     \${RTLDAVIS_NO_HOP:+--no-hop} \\
-    --mqtt-broker \${RTLDAVIS_MQTT_BROKER} \\
-    --mqtt-port \${RTLDAVIS_MQTT_PORT} \\
-    --mqtt-username \${RTLDAVIS_MQTT_USERNAME} \\
-    --mqtt-password \${RTLDAVIS_MQTT_PASSWORD} \\
-    --mqtt-client-id \${RTLDAVIS_MQTT_CLIENT_ID} \\
-    --mqtt-discovery-prefix \${RTLDAVIS_MQTT_DISCOVERY_PREFIX} \\
-    --mqtt-state-prefix \${RTLDAVIS_MQTT_STATE_PREFIX} \\
-    \${RTLDAVIS_STATION_ID:+--station-id \${RTLDAVIS_STATION_ID}}
+    \${RTLDAVIS_VERBOSE:+-v} \\
+    --mqtt-broker "\${RTLDAVIS_MQTT_BROKER}" \\
+    --mqtt-port "\${RTLDAVIS_MQTT_PORT}" \\
+    --mqtt-username "\${RTLDAVIS_MQTT_USERNAME}" \\
+    --mqtt-password "\${RTLDAVIS_MQTT_PASSWORD}" \\
+    --mqtt-client-id "\${RTLDAVIS_MQTT_CLIENT_ID}" \\
+    --mqtt-discovery-prefix "\${RTLDAVIS_MQTT_DISCOVERY_PREFIX}" \\
+    --mqtt-state-prefix "\${RTLDAVIS_MQTT_STATE_PREFIX}" \\
+    \${RTLDAVIS_STATION_ID:+--station-id "\${RTLDAVIS_STATION_ID}"}'
 
 Restart=always
 RestartSec=5
