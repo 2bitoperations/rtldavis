@@ -1,6 +1,7 @@
 """
 Decoders for common (simple) sensor types.
 """
+import math
 
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
 
@@ -33,11 +34,24 @@ class WindDirectionSensor(AbstractSensor):
         )
 
     def decode(self, data: bytes) -> int:
-        raw_val = data[2]
-        val = int(9 + raw_val * 342 / 255)
-        self.logger.info(f"    - Raw Wind Direction: {raw_val}")
-        self.logger.info(f"    - Wind Direction: {val}°")
-        return val
+        # From https://github.com/lheijst/weewx-rtldavis/blob/master/bin/user/rtldavis.py#L1049-L1059
+        luc_wind_dir = data[2] * 1.40625 + 0.3
+        # From https://github.com/dekay/im-me/blob/master/pocketwx/src/protocol.txt
+        dekay_wind_dir = data[2] * 360 / 255
+        # From https://www.carluccio.de/davis-vue-hacking-part-2/
+        dario_wind_dir = 9 + data[2] * 342 / 255
+
+        # From https://www.wxforum.net/index.php?topic=22189.msg247945#msg247945
+        raw_direction = (data[2] << 1) | ((data[4] & 2) >> 1)
+        kabuki_wind_dir = round(raw_direction * 360 / 512)
+        rdsman_wind_dir = round(raw_direction * 0.3515625)
+
+        self.logger.info(
+            f"Parsed wind direction: luc={luc_wind_dir:.2f}, kabuki={kabuki_wind_dir}, "
+            f"rdsman={rdsman_wind_dir}, dekay={dekay_wind_dir:.2f}, dario={dario_wind_dir:.2f}"
+        )
+
+        return kabuki_wind_dir
 
 
 class WindGustSensor(AbstractSensor):
