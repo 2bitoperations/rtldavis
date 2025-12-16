@@ -33,7 +33,9 @@ class WindDirectionSensor(AbstractSensor):
         )
 
     def decode(self, data: bytes) -> int:
-        val = data[2]
+        raw_val = data[2]
+        val = int(9 + raw_val * 342 / 255)
+        self.logger.info(f"    - Raw Wind Direction: {raw_val}")
         self.logger.info(f"    - Wind Direction: {val}°")
         return val
 
