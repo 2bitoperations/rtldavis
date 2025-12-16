@@ -30,10 +30,16 @@ make
 
 echo "Installing librtlsdr..."
 make install
+
+echo "Configuring library path..."
+echo "/usr/local/lib" > /etc/ld.so.conf.d/rtlsdr.conf
 ldconfig
 
 echo "Blacklisting kernel modules..."
 cp ../rtl-sdr.rules /etc/udev/rules.d/
 echo 'blacklist dvb_usb_rtl28xxu' > /etc/modprobe.d/blacklist-rtl.conf
 
-echo "Done! Please reboot your system for changes to take effect."
+echo "Done!"
+echo "The old librtlsdr package can sometimes cause conflicts."
+echo "It is recommended to remove it with: apt remove librtlsdr0"
+echo "Please reboot your system for all changes to take effect."
