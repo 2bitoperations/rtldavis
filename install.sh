@@ -110,6 +110,8 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$CONFIG_FILE
+# Force usage of /usr/local/lib for newer librtlsdr
+Environment="LD_LIBRARY_PATH=/usr/local/lib"
 ExecStart=$INSTALL_DIR/.venv/bin/python -m rtldavis \\
     --rtlsdr-device \${RTLDAVIS_DEVICE} \\
     --ppm \${RTLDAVIS_PPM} \\
