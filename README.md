@@ -28,9 +28,9 @@ Available command-line flags are as follows:
 
 ```
 usage: rtldavis [-h] [-v] [--version] [--list-rtlsdr-devices]
-                [--rtlsdr-serial RTLSDR_SERIAL] [--rtlsdr-index RTLSDR_INDEX]
-                [--station-id STATION_ID] [--ppm PPM] [--mqtt-broker MQTT_BROKER]
-                [--mqtt-port MQTT_PORT]
+                [--rtlsdr-device RTLSDR_DEVICE]
+                [--station-id STATION_ID] [--ppm PPM] [--gain GAIN] [--no-hop]
+                [--mqtt-broker MQTT_BROKER] [--mqtt-port MQTT_PORT]
                 [--mqtt-discovery-prefix MQTT_DISCOVERY_PREFIX]
                 [--mqtt-state-prefix MQTT_STATE_PREFIX]
                 [--mqtt-client-id MQTT_CLIENT_ID]
@@ -44,13 +44,14 @@ options:
   --version             Show version and exit
   --list-rtlsdr-devices
                         List detected RTL-SDR devices
-  --rtlsdr-serial RTLSDR_SERIAL
-                        Select RTL-SDR device by serial number
-  --rtlsdr-index RTLSDR_INDEX
-                        Select RTL-SDR device by index
+  --rtlsdr-device RTLSDR_DEVICE
+                        Select RTL-SDR device by serial number or index
   --station-id STATION_ID
                         Davis station ID to filter for (0-7)
   --ppm PPM             Frequency correction in PPM
+  --gain GAIN           Tuner gain. Can be 'auto' or a value in tenths of a dB
+                        (e.g., 49.6).
+  --no-hop              Disable frequency hopping for debugging
   --mqtt-broker MQTT_BROKER
                         MQTT broker hostname
   --mqtt-port MQTT_PORT
@@ -100,6 +101,18 @@ Logs are sent to the systemd journal.
 
 -   **View all logs:** `journalctl -u rtldavis`
 -   **Tail logs in real-time:** `journalctl -u rtldavis -f`
+
+### RTL-SDR Blog V4 on Older Systems
+
+If you are using an RTL-SDR Blog V4 dongle on an older system (like Raspberry Pi OS Bookworm), you may need to update your `librtlsdr` library to a newer version. The version provided by the OS may not be compatible with the V4 dongle.
+
+To update your `librtlsdr` library, run the following script as root:
+
+```bash
+sudo ./install_librtlsdr.sh
+```
+
+After the script completes, reboot your system for the changes to take effect.
 
 ### License
 The source of this project is licensed under GPL v3.0. According to [http://choosealicense.com/licenses/gpl-3.0/](http://choosealicense.com/licenses/gpl-3.0/) you may:

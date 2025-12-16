@@ -76,6 +76,12 @@ RTLDAVIS_DEVICE="0"
 # Frequency Correction in PPM (default: 0)
 RTLDAVIS_PPM=0
 
+# Tuner Gain (default: auto)
+RTLDAVIS_GAIN="auto"
+
+# Disable frequency hopping (default: false)
+# RTLDAVIS_NO_HOP=true
+
 # MQTT Broker Settings
 RTLDAVIS_MQTT_BROKER="localhost"
 RTLDAVIS_MQTT_PORT=1883
@@ -107,6 +113,8 @@ EnvironmentFile=$CONFIG_FILE
 ExecStart=$INSTALL_DIR/.venv/bin/python -m rtldavis \\
     --rtlsdr-device \${RTLDAVIS_DEVICE} \\
     --ppm \${RTLDAVIS_PPM} \\
+    --gain \${RTLDAVIS_GAIN} \\
+    \${RTLDAVIS_NO_HOP:+--no-hop} \\
     --mqtt-broker \${RTLDAVIS_MQTT_BROKER} \\
     --mqtt-port \${RTLDAVIS_MQTT_PORT} \\
     --mqtt-username \${RTLDAVIS_MQTT_USERNAME} \\
