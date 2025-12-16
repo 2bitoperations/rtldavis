@@ -106,6 +106,7 @@ class PacketConfig:
         preamble_symbols: int,
         packet_symbols: int,
         preamble: str,
+        block_size: int = 512,
     ) -> None:
         self.bit_rate = bit_rate
         self.symbol_length = symbol_length
@@ -115,7 +116,7 @@ class PacketConfig:
         self.preamble_bytes = np.array([int(b) for b in preamble], dtype=np.uint8)
         self.preamble_str = self.preamble_bytes.tobytes()
         self.sample_rate = self.bit_rate * self.symbol_length
-        self.block_size = 512
+        self.block_size = block_size
         self.block_size2 = self.block_size * 2
         self.preamble_length = self.preamble_symbols * self.symbol_length
         self.packet_length = self.packet_symbols * self.symbol_length

@@ -71,6 +71,7 @@ def new_packet_config(symbol_length: int) -> dsp.PacketConfig:
         preamble_symbols=16,
         packet_symbols=80,
         preamble="1100101110001001",
+        block_size=8192,
     )
 
 
