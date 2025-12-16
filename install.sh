@@ -15,6 +15,27 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Check for uv, install if missing
+if ! command -v uv &> /dev/null; then
+    echo "uv not found. Installing uv for root..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Add uv to path for this session
+    export PATH="/root/.local/bin:$PATH"
+fi
+
+UV_BIN=$(command -v uv)
+if [ -z "$UV_BIN" ]; then
+    # Fallback if command -v still fails but we know where it should be
+    if [ -f "/root/.local/bin/uv" ]; then
+        UV_BIN="/root/.local/bin/uv"
+    else
+        echo "Failed to install/find uv. Please install it manually."
+        exit 1
+    fi
+fi
+
+echo "Using uv at: $UV_BIN"
+
 # Check for update flag
 UPDATE_MODE=false
 if [ "$1" == "--update" ]; then
@@ -26,7 +47,12 @@ if [ "$UPDATE_MODE" = true ]; then
     # Check if we are in a git repository
     if [ -d ".git" ]; then
         echo "Pulling latest changes from origin/master..."
-        git pull origin master
+        # Run git pull as the original user to avoid permission issues if the repo is owned by them
+        if [ -n "$SUDO_USER" ]; then
+             sudo -u "$SUDO_USER" git pull origin master
+        else
+             git pull origin master
+        fi
     else
         echo "Error: Not a git repository. Cannot pull updates."
         exit 1
@@ -57,12 +83,7 @@ chown -R root:root "$INSTALL_DIR"
 # Create/Update virtual environment and install dependencies
 echo "Setting up virtual environment and installing dependencies..."
 cd "$INSTALL_DIR"
-# Ensure uv is available (assuming it's in the path of the user running sudo, or installed globally)
-if ! command -v uv &> /dev/null; then
-    echo "uv could not be found. Please install uv first."
-    exit 1
-fi
-uv sync --all-extras
+"$UV_BIN" sync --all-extras
 
 # Create configuration file if it doesn't exist
 if [ ! -f "$CONFIG_FILE" ]; then
