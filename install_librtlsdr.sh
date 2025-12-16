@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to compile and install the latest librtlsdr (rtl-sdr-blog fork)
+# Script to compile and install the latest librtlsdr (steve-m fork)
 # Required for RTL-SDR Blog V4 dongles on older distributions (like Debian Bookworm)
 
 set -e
@@ -10,38 +10,30 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-echo "Removing system librtlsdr packages to avoid conflicts..."
-apt-get remove -y librtlsdr-dev librtlsdr0 || true
-
 echo "Installing build dependencies..."
 apt-get update
-apt-get install -y git cmake build-essential libusb-1.0-0-dev pkg-config
+apt-get install -y libusb-1.0-0-dev git cmake debhelper
 
-echo "Cloning rtl-sdr-blog repository..."
+echo "Cloning librtlsdr repository..."
 cd /tmp
-if [ -d "rtl-sdr-blog" ]; then
-    echo "Removing existing rtl-sdr-blog directory..."
-    rm -rf rtl-sdr-blog
+if [ -d "librtlsdr" ]; then
+    echo "Removing existing librtlsdr directory..."
+    rm -rf librtlsdr
 fi
-git clone https://github.com/rtlsdrblog/rtl-sdr-blog.git
-cd rtl-sdr-blog
+git clone https://github.com/steve-m/librtlsdr.git
+cd librtlsdr
 
-echo "Building librtlsdr..."
-mkdir build
-cd build
-cmake ../ -DINSTALL_UDEV_RULES=ON -DDETACH_KERNEL_DRIVER=ON
-make
+echo "Building Debian packages..."
+dpkg-buildpackage -b --no-sign
 
-echo "Installing librtlsdr..."
-make install
-ldconfig
-
-echo "Configuring library path..."
-echo "/usr/local/lib" > /etc/ld.so.conf.d/rtlsdr.conf
-ldconfig
+echo "Installing Debian packages..."
+cd ..
+dpkg -i librtlsdr0_*.deb
+dpkg -i librtlsdr-dev_*.deb
+dpkg -i rtl-sdr_*.deb
 
 echo "Blacklisting kernel modules..."
-cp ../rtl-sdr.rules /etc/udev/rules.d/
+# The package installation might handle this, but let's be safe
 echo 'blacklist dvb_usb_rtl28xxu' > /etc/modprobe.d/blacklist-rtl.conf
 
 echo "Done! Please reboot your system for all changes to take effect."

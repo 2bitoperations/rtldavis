@@ -149,20 +149,6 @@ async def main_async() -> int:
         )
 
     try:
-        logger.info(f"Using librtlsdr from: {librtlsdr._name}")
-        version_str = librtlsdr.rtlsdr_get_version_string().decode()
-        logger.info(f"librtlsdr version: {version_str}")
-        if "0." in version_str:
-            logger.error("Old librtlsdr version detected. Please update to a newer version (e.g., 2.0.2 or later).")
-            logger.error("You can use the install_librtlsdr.sh script to do this.")
-            return 1
-    except AttributeError:
-        logger.error("librtlsdr version: Unknown (rtlsdr_get_version_string not found - library is too old).")
-        logger.error("Please update to a newer version (e.g., 2.0.2 or later).")
-        logger.error("You can use the install_librtlsdr.sh script to do this.")
-        return 1
-
-    try:
         devices = list_sdr_devices()
     except RuntimeError as e:
         logger.error(str(e))
