@@ -67,6 +67,30 @@ class MQTTPublisher:
             state_class="measurement",
             icon="mdi:timer-sand",
         )
+        self.sensor_configs["rain_total_hourly"] = MQTTSensorConfig(
+            name="Rain Total Hourly",
+            id="rain_total_hourly",
+            device_class="precipitation",
+            unit_of_measurement="in",
+            state_class="total",
+            icon="mdi:weather-pouring",
+        )
+        self.sensor_configs["rain_total_daily"] = MQTTSensorConfig(
+            name="Rain Total Daily",
+            id="rain_total_daily",
+            device_class="precipitation",
+            unit_of_measurement="in",
+            state_class="total",
+            icon="mdi:weather-pouring",
+        )
+        self.sensor_configs["rain_total_weekly"] = MQTTSensorConfig(
+            name="Rain Total Weekly",
+            id="rain_total_weekly",
+            device_class="precipitation",
+            unit_of_measurement="in",
+            state_class="total",
+            icon="mdi:weather-pouring",
+        )
 
     def connect(self) -> None:
         try:

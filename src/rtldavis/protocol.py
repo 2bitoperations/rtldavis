@@ -48,6 +48,7 @@ class Message:
     sensor_type: Optional[SensorType]
     sensor_values: Dict[str, any] = field(default_factory=dict)
     raw_sensor_id: Optional[int] = None
+    raw_msg_type3: Optional[int] = None
 
 
 @dataclass
@@ -336,9 +337,14 @@ class Parser:
             )
             return None
 
-        logger.info(
-            f"Processing message for station ID {msg_id}, sensor type {sensor_type.name} ({sensor_id}), hex data: {msg_data.hex()}"
-        )
+        raw_hex = msg_data.hex()
+        log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor_type.name}):\n"
+        log_msg += f"  Raw data:      {raw_hex}\n"
+        log_msg += f"  - Header:      {raw_hex[0:2]} (Sensor ID: {sensor_id}, Station ID: {msg_id})\n"
+        log_msg += f"  - Wind Speed:    {raw_hex[2:4]} ({msg_data[1]} mph)\n"
+        log_msg += f"  - Wind Dir:      {raw_hex[4:6]} ({msg_data[2]})\n"
+        log_msg += f"  - Sensor data ({sensor_type.name}): {raw_hex[6:]}\n"
+        logger.info(log_msg)
 
         sensor_values = {}
 
@@ -351,7 +357,10 @@ class Parser:
         if sensor_type in self.sensor_decoders:
             decoder = self._get_decoder(msg_id, sensor_type)
             value = decoder.decode(msg_data)
-            sensor_values[decoder.config.id] = value
+            if isinstance(value, dict):
+                sensor_values.update(value)
+            else:
+                sensor_values[decoder.config.id] = value
         else:
             logger.warning(f"No decoder registered for sensor type {sensor_type.name}")
 
@@ -361,4 +370,5 @@ class Parser:
             sensor_type=sensor_type,
             sensor_values=sensor_values,
             raw_sensor_id=sensor_id,
+            raw_msg_type3=msg_data[3],
         )

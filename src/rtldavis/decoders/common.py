@@ -19,7 +19,7 @@ class WindSpeedSensor(AbstractSensor):
 
     def decode(self, data: bytes) -> int:
         val = data[1]
-        self.logger.info(f"    - Wind Speed: {val} mph")
+        self.logger.info(f"  - Byte 1 (Wind Speed): {val} mph")
         return val
 
 
@@ -47,8 +47,15 @@ class WindDirectionSensor(AbstractSensor):
         rdsman_wind_dir = round(raw_direction * 0.3515625)
 
         self.logger.info(
-            f"Parsed wind direction: luc={luc_wind_dir:.2f}, kabuki={kabuki_wind_dir}, "
-            f"rdsman={rdsman_wind_dir}, dekay={dekay_wind_dir:.2f}, dario={dario_wind_dir:.2f}"
+            f"  - Wind Direction Calculations:\n"
+            f"    - Raw Byte 2: {data[2]}\n"
+            f"    - Raw Byte 4: {data[4]}\n"
+            f"    - Luc: {luc_wind_dir:.2f}°\n"
+            f"    - Dekay: {dekay_wind_dir:.2f}°\n"
+            f"    - Dario: {dario_wind_dir:.2f}°\n"
+            f"    - Kabuki (raw): {raw_direction}\n"
+            f"    - Kabuki: {kabuki_wind_dir}° (used)\n"
+            f"    - Rdsman: {rdsman_wind_dir}°"
         )
 
         return kabuki_wind_dir
@@ -67,7 +74,7 @@ class WindGustSensor(AbstractSensor):
 
     def decode(self, data: bytes) -> int:
         val = data[3]
-        self.logger.info(f"    - Wind Gust: {val} mph")
+        self.logger.info(f"  - Byte 3 (Wind Gust): {val} mph")
         return val
 
 

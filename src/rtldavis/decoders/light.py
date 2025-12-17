@@ -1,10 +1,8 @@
 """
 Decoder for Davis light data.
 """
-
 import logging
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
-
 
 class LightSensor(AbstractSensor):
     def __init__(self, logger: logging.Logger):
@@ -26,9 +24,12 @@ class LightSensor(AbstractSensor):
         """
         raw_light = (data[3] << 2) + ((data[4] & 0xC0) >> 6)
         light = float(raw_light)
-
-        self.logger.info(f"    - Raw Value: 0x{raw_light:03X} ({raw_light})")
-        self.logger.info("    - Formula: (Byte3 * 4) + ((Byte4 & 0xC0) / 64)")
-        self.logger.info(f"    - Light: {light}")
+        
+        self.logger.info(
+            f"  - Light Data (Bytes 3-4):\n"
+            f"    - Raw Value: 0x{raw_light:03X} ({raw_light})\n"
+            f"    - Formula: (Byte3 * 4) + ((Byte4 & 0xC0) / 64)\n"
+            f"    - Light: {light}"
+        )
 
         return light
