@@ -30,8 +30,10 @@ class TemperatureSensor(AbstractSensor):
         raw_temp = (data[3] << 8) | data[4]
         temp_f = float(raw_temp) / 160.0
 
-        self.logger.info(f"    - Raw Value: 0x{raw_temp:04X} ({raw_temp})")
-        self.logger.info(f"    - Formula: {raw_temp} / 160.0")
-        self.logger.info(f"    - Temperature: {temp_f:.1f}°F")
+        log_msg = f"  - Temperature Data:\n"
+        log_msg += f"    - Raw Value (Bytes 3-4): 0x{raw_temp:04X} ({raw_temp})\n"
+        log_msg += f"    - Formula: {raw_temp} / 160.0\n"
+        log_msg += f"    - Temperature: {temp_f:.1f}°F"
+        self.logger.info(log_msg)
 
         return temp_f

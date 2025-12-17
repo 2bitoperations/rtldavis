@@ -39,8 +39,10 @@ class UVSensor(AbstractSensor):
         raw_uv = ((data[3] << 8) + data[4]) >> 6
         uv_index = float(raw_uv) / 50.0
 
-        self.logger.info(f"    - Raw Value: 0x{raw_uv:03X} ({raw_uv})")
-        self.logger.info("    - Formula: (((Byte3 << 8) + Byte4) >> 6) / 50.0")
-        self.logger.info(f"    - UV Index: {uv_index:.1f}")
+        log_msg = f"  - UV Index Data:\n"
+        log_msg += f"    - Raw Value (Bytes 3-4 >> 6): 0x{raw_uv:03X} ({raw_uv})\n"
+        log_msg += f"    - Formula: {raw_uv} / 50.0\n"
+        log_msg += f"    - UV Index: {uv_index:.1f}"
+        self.logger.info(log_msg)
 
         return uv_index
