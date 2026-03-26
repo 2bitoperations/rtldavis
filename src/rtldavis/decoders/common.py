@@ -29,7 +29,9 @@ class WindDirectionSensor(AbstractSensor):
         return MQTTSensorConfig(
             name="Wind Direction",
             id="wind_direction",
+            device_class="wind_direction",
             unit_of_measurement="°",
+            state_class="measurement_angle",
             icon="mdi:compass-rose",
         )
 

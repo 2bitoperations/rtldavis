@@ -16,7 +16,7 @@ class UVSensor(AbstractSensor):
             name="UV Index",
             id="uv_index",
             device_class="uv_index",
-            unit_of_measurement="UV Index",
+            unit_of_measurement="UV index",
             state_class="measurement",
             icon="mdi:sun-wireless",
         )
