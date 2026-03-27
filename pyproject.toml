@@ -13,7 +13,7 @@ keywords = ["rtl-sdr", "davis", "weather", "sdr", "receiver", "dsp"]
 dependencies = [
     "pyrtlsdr~=0.3.0",
     "numpy~=2.4",
-    "setuptools~=82.0",
+    "setuptools~=75.0",
     "paho-mqtt~=2.1",
     "ruff~=0.15",
 ]
