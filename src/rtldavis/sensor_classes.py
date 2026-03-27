@@ -23,6 +23,11 @@ class AbstractSensor(ABC):
     def config(self) -> MQTTSensorConfig:
         pass
 
+    @property
+    def all_configs(self) -> list["MQTTSensorConfig"]:
+        """All sensor configs this decoder can emit. Override when decode() returns a dict."""
+        return [self.config]
+
     @abstractmethod
     def decode(self, data: Any) -> Any:
         """

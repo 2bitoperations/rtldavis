@@ -16,6 +16,8 @@ from .version import __version__
 from . import protocol
 from .mqtt import MQTTPublisher
 from .worker import worker_main
+from .sensor_store import SensorStore
+from .rest_api import start_rest_server
 
 
 @dataclass
@@ -125,6 +127,12 @@ async def main_async() -> int:
     )
     parser.add_argument("--mqtt-username", help="MQTT username")
     parser.add_argument("--mqtt-password", help="MQTT password")
+    parser.add_argument(
+        "--http-port",
+        type=int,
+        default=8088,
+        help="Port for the REST API server (GET /sensors). Default: 8088.",
+    )
 
     args = parser.parse_args()
 
@@ -190,6 +198,8 @@ async def main_async() -> int:
             logger.error("Multiple RTL-SDR devices found. Please specify one.")
         return 1
 
+    sensor_store = SensorStore()
+
     mqtt_publisher: Optional[MQTTPublisher] = None
     if args.mqtt_broker:
         mqtt_publisher = MQTTPublisher(
@@ -254,6 +264,7 @@ async def main_async() -> int:
                     if msg:
                         packet_received_event.set()
                         logger.info(f"Received: {msg}")
+                        sensor_store.update(msg)
                         if mqtt_publisher:
                             mqtt_publisher.publish(msg)
                 except queue.Empty:
@@ -262,6 +273,10 @@ async def main_async() -> int:
                     logger.error(f"Error reading from result queue: {e}")
 
         result_reader_task = asyncio.create_task(result_queue_reader(result_queue))
+
+        rest_server_task = asyncio.create_task(
+            start_rest_server(args.http_port, sensor_store.to_response)
+        )
 
         async def hop_task():
             MAX_MISSED = 50
@@ -350,6 +365,8 @@ async def main_async() -> int:
     finally:
         if "result_reader_task" in locals():
             result_reader_task.cancel()
+        if "rest_server_task" in locals():
+            rest_server_task.cancel()
         if "hop_task_handle" in locals() and not args.no_hop:
             hop_task_handle.cancel()
         if worker_process:

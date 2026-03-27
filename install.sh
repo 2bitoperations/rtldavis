@@ -117,6 +117,9 @@ RTLDAVIS_MQTT_STATE_PREFIX="rtldavis"
 
 # Station ID (optional, 0-7)
 # RTLDAVIS_STATION_ID=0
+
+# REST API port (default: 8088)
+RTLDAVIS_HTTP_PORT=8088
 EOF
 else
     echo "Configuration file already exists: $CONFIG_FILE (skipping overwrite)"
@@ -149,7 +152,8 @@ ExecStart=/bin/bash -c '$INSTALL_DIR/.venv/bin/python -m rtldavis \\
     --mqtt-client-id "\${RTLDAVIS_MQTT_CLIENT_ID}" \\
     --mqtt-discovery-prefix "\${RTLDAVIS_MQTT_DISCOVERY_PREFIX}" \\
     --mqtt-state-prefix "\${RTLDAVIS_MQTT_STATE_PREFIX}" \\
-    \${RTLDAVIS_STATION_ID:+--station-id "\${RTLDAVIS_STATION_ID}"}'
+    \${RTLDAVIS_STATION_ID:+--station-id "\${RTLDAVIS_STATION_ID}"} \\
+    --http-port "\${RTLDAVIS_HTTP_PORT:-8088}"'
 
 Restart=always
 RestartSec=5

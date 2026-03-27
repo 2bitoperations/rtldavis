@@ -7,6 +7,31 @@ from collections import deque
 import time
 from ..sensor_classes import AbstractSensor, MQTTSensorConfig
 
+_RAIN_TOTAL_HOURLY = MQTTSensorConfig(
+    name="Rain Total Hourly",
+    id="rain_total_hourly",
+    device_class="precipitation",
+    unit_of_measurement="in",
+    state_class="total",
+    icon="mdi:weather-pouring",
+)
+_RAIN_TOTAL_DAILY = MQTTSensorConfig(
+    name="Rain Total Daily",
+    id="rain_total_daily",
+    device_class="precipitation",
+    unit_of_measurement="in",
+    state_class="total",
+    icon="mdi:weather-pouring",
+)
+_RAIN_TOTAL_WEEKLY = MQTTSensorConfig(
+    name="Rain Total Weekly",
+    id="rain_total_weekly",
+    device_class="precipitation",
+    unit_of_measurement="in",
+    state_class="total",
+    icon="mdi:weather-pouring",
+)
+
 class RainTotalSensor(AbstractSensor):
     """
     A stateful decoder for cumulative rain total from a Davis weather station.
@@ -28,6 +53,10 @@ class RainTotalSensor(AbstractSensor):
             state_class="total_increasing",
             icon="mdi:weather-pouring",
         )
+
+    @property
+    def all_configs(self) -> list[MQTTSensorConfig]:
+        return [self.config, _RAIN_TOTAL_HOURLY, _RAIN_TOTAL_DAILY, _RAIN_TOTAL_WEEKLY]
 
     def decode(self, data: bytes) -> dict:
         """

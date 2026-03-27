@@ -14,6 +14,7 @@ The primary objective is to re-implement the functionality of the original Go-ba
 -   **Language**: The project will be developed in Python 3.12, unless a critical library necessitates a different version.
 -   **Environment Management**: All development and execution will use the `uv` package and environment manager.
 -   **Coding Standards**: The codebase will adhere to modern Python best practices, including clear, readable, and maintainable code.
+-   **Dependency Pinning**: All Python dependencies must use `~=` (compatible release) pinning semantics in `pyproject.toml` (e.g. `numpy~=2.4`). This allows patch-level updates within a minor version while preventing unexpected major/minor bumps.
 
 ## Project Status
 

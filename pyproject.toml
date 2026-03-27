@@ -11,12 +11,11 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 keywords = ["rtl-sdr", "davis", "weather", "sdr", "receiver", "dsp"]
 dependencies = [
-    "pyrtlsdr~=0.3.0",
-    "six~=1.16.0",
-    "numpy~=1.26.0",
-    "setuptools~=75.0.0",
-    "paho-mqtt~=2.1.0",
-    "ruff~=0.14.9"
+    "pyrtlsdr~=0.4",
+    "numpy~=2.4",
+    "setuptools~=82.0",
+    "paho-mqtt~=2.1",
+    "ruff~=0.15",
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -33,7 +32,7 @@ classifiers = [
 rtldavis = "rtldavis.__main__:main"
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest~=9.0"]
 
 [project.urls]
 Homepage = "https://github.com/bemasher/rtldavis"
