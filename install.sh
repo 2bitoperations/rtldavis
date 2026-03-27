@@ -15,12 +15,14 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# sudo strips non-standard PATH entries, so ensure root's local bin is visible
+# before checking for uv — otherwise an already-installed uv is never found.
+export PATH="/root/.local/bin:$PATH"
+
 # Check for uv, install if missing
 if ! command -v uv &> /dev/null; then
     echo "uv not found. Installing uv for root..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    # Add uv to path for this session
-    export PATH="/root/.local/bin:$PATH"
 fi
 
 UV_BIN=$(command -v uv)
