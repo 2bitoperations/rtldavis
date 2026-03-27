@@ -15,6 +15,7 @@ The primary objective is to re-implement the functionality of the original Go-ba
 -   **Environment Management**: All development and execution will use the `uv` package and environment manager.
 -   **Coding Standards**: The codebase will adhere to modern Python best practices, including clear, readable, and maintainable code.
 -   **Dependency Pinning**: All Python dependencies must use `~=` (compatible release) pinning semantics in `pyproject.toml` (e.g. `numpy~=2.4`). This allows patch-level updates within a minor version while preventing unexpected major/minor bumps.
+-   **Testing**: All tests must pass (`uv run --all-extras pytest`) before a change is presented to the user as ready. Do not claim a task is complete if the test suite is failing.
 
 ## Project Status
 
