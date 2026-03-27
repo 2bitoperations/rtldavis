@@ -66,7 +66,59 @@ options:
                         MQTT username
   --mqtt-password MQTT_PASSWORD
                         MQTT password
+  --http-port HTTP_PORT
+                        Port for the REST API server (GET /sensors). Default: 8088.
 ```
+
+### REST API
+
+The application exposes a read-only HTTP endpoint that returns the latest value received for every sensor.
+
+**Endpoint:** `GET /sensors`
+
+**Default port:** `8088` (configurable via `--http-port`)
+
+**Response:** a JSON object where each key is a sensor identifier. Example:
+
+```json
+{
+  "wind_speed": {
+    "name": "wind_speed",
+    "description": "Wind Speed",
+    "value": 14.5,
+    "timestamp_ms": 1711497600123,
+    "units": "km/h"
+  },
+  "wind_direction": {
+    "name": "wind_direction",
+    "description": "Wind Direction",
+    "value": 270,
+    "timestamp_ms": 1711497600123,
+    "units": "°"
+  },
+  "temperature": {
+    "name": "temperature",
+    "description": "Temperature",
+    "value": 68.4,
+    "timestamp_ms": 1711497600456,
+    "units": "°F"
+  }
+}
+```
+
+Each entry contains:
+
+| Field | Description |
+|---|---|
+| `name` | Sensor identifier (same as the key) |
+| `description` | Human-readable sensor name |
+| `value` | Latest received value |
+| `timestamp_ms` | Unix timestamp of the reading in milliseconds |
+| `units` | Unit of measurement, or `null` if not applicable |
+
+The response only includes sensors for which at least one reading has been received since startup. No authentication is required.
+
+Known sensor keys include: `wind_speed`, `wind_direction`, `wind_gust_speed`, `temperature`, `humidity`, `rain_total_raw`, `rain_total_hourly`, `rain_total_daily`, `rain_total_weekly`, `rain_rate`, `uv_index`, `solar_radiation`, `light`, `supercap_voltage`, `rssi`, `snr`.
 
 ### Raspberry Pi OS Installation (Bookworm/Trixie)
 
