@@ -13,14 +13,15 @@ class WindSpeedSensor(AbstractSensor):
             name="Wind Speed",
             id="wind_speed",
             device_class="wind_speed",
-            unit_of_measurement="mph",
+            unit_of_measurement="km/h",
             state_class="measurement",
         )
 
-    def decode(self, data: bytes) -> int:
-        val = data[1]
-        self.logger.info(f"  - Byte 1 (Wind Speed): {val} mph")
-        return val
+    def decode(self, data: bytes) -> float:
+        mph = data[1]
+        kmh = round(mph * 1.60934, 1)
+        self.logger.info(f"  - Byte 1 (Wind Speed): {mph} mph -> {kmh} km/h")
+        return kmh
 
 
 class WindDirectionSensor(AbstractSensor):
@@ -70,14 +71,15 @@ class WindGustSensor(AbstractSensor):
             name="Wind Gust",
             id="wind_gust_speed",
             device_class="wind_speed",
-            unit_of_measurement="mph",
+            unit_of_measurement="km/h",
             state_class="measurement",
         )
 
-    def decode(self, data: bytes) -> int:
-        val = data[3]
-        self.logger.info(f"  - Byte 3 (Wind Gust): {val} mph")
-        return val
+    def decode(self, data: bytes) -> float:
+        mph = data[3]
+        kmh = round(mph * 1.60934, 1)
+        self.logger.info(f"  - Byte 3 (Wind Gust): {mph} mph -> {kmh} km/h")
+        return kmh
 
 
 class RSSISensor(AbstractSensor):
