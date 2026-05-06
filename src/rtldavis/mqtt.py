@@ -145,7 +145,7 @@ class MQTTPublisher:
             "name": f"Davis {config.name}",
             "unique_id": unique_id,
             "state_topic": state_topic,
-            "value_template": f"{{% if value_json.{config.id} is not none %}}{{{{ value_json.{config.id} }}}}{{% endif %}}",
+            "value_template": f"{{% if '{config.id}' in value_json %}}{{{{ value_json.{config.id} }}}}{{% endif %}}",
             "device": {
                 "identifiers": [device_id],
                 "name": f"Davis Weather Station {station_id}",
