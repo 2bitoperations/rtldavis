@@ -176,3 +176,5 @@ systemctl start "$SERVICE_NAME"
 echo "Installation/Update complete!"
 echo "Service status:"
 systemctl status "$SERVICE_NAME" --no-pager
+echo ""
+echo "To tail live logs: journalctl -u $SERVICE_NAME -f"
