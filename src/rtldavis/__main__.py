@@ -332,20 +332,49 @@ async def _main_dual_async(args: argparse.Namespace, log_level: int) -> int:
 
         packet_received_event = asyncio.Event()
 
+        rest_server_task = asyncio.create_task(
+            start_rest_server(args.http_port, sensor_store.to_response)
+        )
+
+        from .websocket_server import start_ws_server
+        ws_server = start_ws_server(args.ws_port)
+        if args.buttons:
+            from .buttons import init_buttons
+            init_buttons(asyncio.get_running_loop(), ws_server.broadcast)
+
+        def _handle_msg_unified(msg):
+            packet_received_event.set()
+            sensor_store.update(msg)
+            if mqtt_publisher: mqtt_publisher.publish(msg)
+            asyncio.create_task(ws_server.broadcast("sensor", msg.sensor_values))
+
+        bme280_task_handle = None
+        if args.bme280:
+            from .bme280_reader import start_bme280_task
+            def _handle_bme280(msg):
+                sensor_store.update(msg)
+                if mqtt_publisher: mqtt_publisher.publish(msg)
+                asyncio.create_task(ws_server.broadcast("sensor", msg.sensor_values))
+            
+            bme280_task_handle = start_bme280_task(
+                bus_num=args.bme280_i2c_bus,
+                address=int(args.bme280_i2c_address, 0),
+                interval_s=60,
+                callback=_handle_bme280
+            )
+
         async def result_queue_reader(q: multiprocessing.Queue):
             while True:
                 try:
                     msg = await asyncio.to_thread(q.get_nowait)
                     if msg:
-                        packet_received_event.set()
                         logger.warning(f"[RTLSDR] Received: {msg}")
                         
                         # Immediately freeze and dump the CC1101 hardware state
                         state = await asyncio.to_thread(radio.debug_state)
-                        logger.warning(f"[CC1101] Hardware State at Sync: {state}")
+                        logger.debug(f"[CC1101] Hardware State at Sync: {state}")
                         
-                        sensor_store.update(msg)
-                        if mqtt_publisher: mqtt_publisher.publish(msg)
+                        _handle_msg_unified(msg)
                 except queue.Empty:
                     await asyncio.sleep(0.01)
 
@@ -357,6 +386,9 @@ async def _main_dual_async(args: argparse.Namespace, log_level: int) -> int:
                 await packet_received_event.wait()
                 packet_received_event.clear()
                 logger.info("Synced! Starting hop sequence.")
+
+                # Wait 500ms before hopping so the RTLSDR worker has time to finish decoding its buffer
+                await asyncio.sleep(0.5)
 
                 new_hop = p.next_hop()
                 sdr.center_freq = new_hop.channel_freq + new_hop.freq_corr
@@ -380,6 +412,10 @@ async def _main_dual_async(args: argparse.Namespace, log_level: int) -> int:
 
                         last_hop_time = actual_time
                         missed_count = 0
+                        
+                        # Wait 500ms before hopping so the RTLSDR worker has time to finish decoding its buffer
+                        await asyncio.sleep(0.5)
+
                     except asyncio.TimeoutError:
                         missed_count += 1
                         if missed_count >= MAX_MISSED:
@@ -402,10 +438,11 @@ async def _main_dual_async(args: argparse.Namespace, log_level: int) -> int:
             while True:
                 pkt = await asyncio.to_thread(radio.receive_packet)
                 if pkt is not None:
-                    logger.warning(f"[CC1101] Hardware Triggered! FIFO extracted: {pkt.data}")
+                    logger.debug(f"[CC1101] Hardware Triggered! FIFO extracted: {pkt.data}")
                     msgs = p.parse([pkt])
                     for msg in msgs:
                         logger.warning(f"[CC1101] Received: {msg}")
+                        _handle_msg_unified(msg)
                 else:
                     await asyncio.sleep(0.01)
 
@@ -421,6 +458,8 @@ async def _main_dual_async(args: argparse.Namespace, log_level: int) -> int:
         logger.exception(f"An error occurred: {e}")
         return 1
     finally:
+        if "rest_server_task" in locals(): rest_server_task.cancel()
+        if "bme280_task_handle" in locals() and bme280_task_handle: bme280_task_handle.cancel()
         if "result_reader_task" in locals(): result_reader_task.cancel()
         if "hop_task_handle" in locals(): hop_task_handle.cancel()
         if "cc1101_task" in locals(): cc1101_task.cancel()

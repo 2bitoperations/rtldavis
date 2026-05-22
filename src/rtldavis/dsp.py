@@ -95,7 +95,7 @@ def quantize(in_float: np.ndarray, out_byte: np.ndarray) -> None:
     Converts the demodulated signal into a stream of bits.
     """
     for i, val in enumerate(in_float):
-        out_byte[i] = 1 if val > 0 else 0
+        out_byte[i] = struct.unpack("Q", struct.pack("d", val))[0] >> 63
 
 
 class PacketConfig:
