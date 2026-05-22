@@ -87,6 +87,7 @@ def swap_bit_order(b: int) -> int:
 class Parser:
     symbol_length: int
     station_id: Optional[int] = None
+    include_crc_failed: bool = False
     cfg: dsp.PacketConfig = field(init=False)
     demodulator: dsp.Demodulator = field(init=False)
     _crc: crc.CRC = field(init=False)
@@ -282,26 +283,36 @@ class Parser:
         seen: Set[bytes] = set()
         msgs: List[Message] = []
         for pkt in pkts:
+            if self.include_crc_failed:
+                raw_hex = " ".join([f"{b:02x}" for b in pkt.data])
+                logger.warning(f"RAW DEMOD OUTPUT: {raw_hex} (RSSI: {pkt.rssi:.1f})")
+
             data = bytes(swap_bit_order(b) for b in pkt.data)
+            data_hex = " ".join([f"{b:02x}" for b in data])
 
             if data in seen:
                 continue
             seen.add(data)
 
             if self._crc.checksum(data[2:]) != 0:
-                logger.debug("CRC check failed")
+                if self.include_crc_failed:
+                    logger.warning(f"CRC FAILED on: {data_hex}")
                 continue
 
             logger.info(f"CRC check OK. RSSI: {pkt.rssi:.2f} dB, SNR: {pkt.snr:.2f} dB")
 
-            preamble_start = pkt.index
-            preamble_end = pkt.index + self.cfg.preamble_length
-            preamble_samples = self.demodulator.discriminated[
-                preamble_start:preamble_end
-            ]
-
-            mean = np.mean(preamble_samples)
-            freq_err = -int((mean * float(self.cfg.sample_rate)) / (2 * math.pi))
+            if pkt.index >= 0:
+                preamble_start = pkt.index
+                preamble_end = pkt.index + self.cfg.preamble_length
+                preamble_samples = self.demodulator.discriminated[
+                    preamble_start:preamble_end
+                ]
+                mean = np.mean(preamble_samples)
+                freq_err = -int((mean * float(self.cfg.sample_rate)) / (2 * math.pi))
+            else:
+                # CC1101 path: demodulation is in hardware; no discriminated buffer.
+                freq_err = 0
+                
             logger.info(f"Frequency error: {freq_err} Hz")
 
             msg_data = data[2:]

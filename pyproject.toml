@@ -16,6 +16,13 @@ dependencies = [
     "setuptools~=75.0",
     "paho-mqtt~=2.1",
     "ruff~=0.15",
+    "smbus2~=0.4.3",
+    "RPi.bme280~=0.2.4",
+    "spidev~=3.6; sys_platform == 'linux'",
+    "websockets~=12.0",
+    "gpiozero~=2.0",
+    "RPi.GPIO~=0.7.1; sys_platform == 'linux'",
+    "rpi-lgpio~=0.4; sys_platform == 'linux'",
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -32,7 +39,8 @@ classifiers = [
 rtldavis = "rtldavis.__main__:main"
 
 [project.optional-dependencies]
-test = ["pytest~=9.0"]
+test   = ["pytest~=9.0"]
+cc1101 = ["spidev"]
 
 [project.urls]
 Homepage = "https://github.com/bemasher/rtldavis"
