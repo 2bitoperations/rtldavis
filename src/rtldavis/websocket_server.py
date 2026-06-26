@@ -52,5 +52,5 @@ class DashboardWebSocketServer:
 
 def start_ws_server(port: int) -> DashboardWebSocketServer:
     server = DashboardWebSocketServer(port)
-    asyncio.create_task(server.start())
+    server._task = asyncio.create_task(server.start())
     return server
