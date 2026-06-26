@@ -12,7 +12,7 @@ class MQTTSensorConfig:
     unit_of_measurement: Optional[str] = None
     state_class: Optional[str] = None
     icon: Optional[str] = None
-    entity_category: Optional[str] = None
+    diagnostic: bool = False  # prefixes id with diag_; match via recorder exclude: sensor.*_diag_*
 
 
 class AbstractSensor(ABC):

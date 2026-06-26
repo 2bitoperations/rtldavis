@@ -91,7 +91,7 @@ class RSSISensor(AbstractSensor):
             device_class="signal_strength",
             unit_of_measurement="dB",
             state_class="measurement",
-            entity_category="diagnostic",
+            diagnostic=True,
         )
 
     def decode(self, data: float) -> float:
@@ -107,7 +107,7 @@ class SNRSensor(AbstractSensor):
             device_class="signal_strength",
             unit_of_measurement="dB",
             state_class="measurement",
-            entity_category="diagnostic",
+            diagnostic=True,
         )
 
     def decode(self, data: float) -> float:

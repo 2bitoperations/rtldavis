@@ -66,7 +66,7 @@ class MQTTPublisher:
             unit_of_measurement="s",
             state_class="measurement",
             icon="mdi:timer-sand",
-            entity_category="diagnostic",
+            diagnostic=True,
         )
         self.sensor_configs["rain_total_hourly"] = MQTTSensorConfig(
             name="Rain Total Hourly",
@@ -135,7 +135,8 @@ class MQTTPublisher:
 
     def _publish_config(self, station_id: int, config: MQTTSensorConfig) -> None:
         device_id = f"rtldavis_{station_id}"
-        unique_id = f"{device_id}_{config.id}"
+        effective_id = f"diag_{config.id}" if config.diagnostic else config.id
+        unique_id = f"{device_id}_{effective_id}"
 
         config_topic = f"{self.discovery_prefix}/sensor/{unique_id}/config"
         state_topic = f"{self.state_prefix}/{station_id}/state"
@@ -146,7 +147,7 @@ class MQTTPublisher:
             "name": f"Davis {config.name}",
             "unique_id": unique_id,
             "state_topic": state_topic,
-            "value_template": f"{{% if '{config.id}' in value_json %}}{{{{ value_json.{config.id} }}}}{{% endif %}}",
+            "value_template": f"{{% if '{effective_id}' in value_json %}}{{{{ value_json.{effective_id} }}}}{{% endif %}}",
             "device": {
                 "identifiers": [device_id],
                 "name": f"Davis Weather Station {station_id}",
@@ -166,8 +167,6 @@ class MQTTPublisher:
             payload["state_class"] = config.state_class
         if config.icon:
             payload["icon"] = config.icon
-        if config.entity_category:
-            payload["entity_category"] = config.entity_category
 
         logger.info(f"Publishing config for {config.id} to {config_topic}")
         self.client.publish(config_topic, json.dumps(payload), retain=True)
@@ -180,7 +179,7 @@ class MQTTPublisher:
             if self._last_data_time:
                 seconds_since = int(time.time() - self._last_data_time)
                 state_topic = f"{self.state_prefix}/{station_id}/state"
-                payload = json.dumps({"seconds_since_last_data": seconds_since})
+                payload = json.dumps({"diag_seconds_since_last_data": seconds_since})
                 self.client.publish(state_topic, payload, retain=False)
 
     def publish(self, msg: Message) -> None:
@@ -204,8 +203,9 @@ class MQTTPublisher:
         for sensor_id, value in msg.sensor_values.items():
             if value is None:
                 continue
-
-            payload[sensor_id] = value
+            cfg = self.sensor_configs.get(sensor_id)
+            effective_id = f"diag_{sensor_id}" if (cfg and cfg.diagnostic) else sensor_id
+            payload[effective_id] = value
 
         state_topic = f"{self.state_prefix}/{station_id}/state"
         json_payload = json.dumps(payload)
