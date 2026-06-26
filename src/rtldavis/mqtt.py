@@ -66,6 +66,7 @@ class MQTTPublisher:
             unit_of_measurement="s",
             state_class="measurement",
             icon="mdi:timer-sand",
+            entity_category="diagnostic",
         )
         self.sensor_configs["rain_total_hourly"] = MQTTSensorConfig(
             name="Rain Total Hourly",
@@ -165,6 +166,8 @@ class MQTTPublisher:
             payload["state_class"] = config.state_class
         if config.icon:
             payload["icon"] = config.icon
+        if config.entity_category:
+            payload["entity_category"] = config.entity_category
 
         logger.info(f"Publishing config for {config.id} to {config_topic}")
         self.client.publish(config_topic, json.dumps(payload), retain=True)
