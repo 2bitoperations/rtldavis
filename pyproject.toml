@@ -22,7 +22,7 @@ dependencies = [
     "websockets~=12.0",
     "gpiozero~=2.0",
     "RPi.GPIO~=0.7.1; sys_platform == 'linux'",
-    "rpi-lgpio==0.4; sys_platform == 'linux'",
+    "rpi-lgpio==0.4; sys_platform == 'linux'",  # 0.5+ pulls lgpio C ext requiring liblgpio-dev
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
