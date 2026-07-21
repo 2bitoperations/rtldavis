@@ -1,3 +1,7 @@
+"""
+Diagnostic Tool: prove_cc1101.py
+Hardware verification script that tests SPI communication and verifies that registers can be successfully read and written on the CC1101 chip.
+"""
 import time
 import logging
 from src.rtldavis.cc1101 import CC1101

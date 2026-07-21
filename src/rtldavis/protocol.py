@@ -340,21 +340,31 @@ class Parser:
         self, pkt: dsp.Packet, msg_id: int, msg_data: bytes
     ) -> Optional[Message]:
         sensor_id = msg_data[0] >> 4
+        sensor_type = None
         try:
             sensor_type = SensorType(sensor_id)
         except ValueError:
             logger.warning(
                 f"Unknown sensor type: 0x{sensor_id:02X}. Raw data: {msg_data.hex()}"
             )
-            return None
+            # We still want to return a message so the Hopper knows we received a valid packet!
+
+        msg = Message(
+            packet=pkt,
+            id=msg_id,
+            sensor_type=sensor_type,
+            sensor_values={},
+            raw_sensor_id=sensor_id,
+            raw_msg_type3=msg_data[2],
+        )
 
         raw_hex = msg_data.hex()
-        log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor_type.name}):\n"
+        log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor_type.name if sensor_type else 'Unknown'}):\n"
         log_msg += f"  Raw data:      {raw_hex}\n"
         log_msg += f"  - Header:      {raw_hex[0:2]} (Sensor ID: {sensor_id}, Station ID: {msg_id})\n"
         log_msg += f"  - Wind Speed:    {raw_hex[2:4]} ({msg_data[1]} mph)\n"
         log_msg += f"  - Wind Dir:      {raw_hex[4:6]} ({msg_data[2]})\n"
-        log_msg += f"  - Sensor data ({sensor_type.name}): {raw_hex[6:]}\n"
+        log_msg += f"  - Sensor data ({sensor_type.name if sensor_type else 'Unknown'}): {raw_hex[6:]}\n"
         logger.info(log_msg)
 
         sensor_values = {}

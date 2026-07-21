@@ -1,3 +1,7 @@
+"""
+Diagnostic Tool: dump_iq.py
+Captures raw I/Q samples from the RTL-SDR and dumps them to a file for offline analysis using tools like Inspectrum or URH.
+"""
 import numpy as np
 from rtlsdr import RtlSdr
 import time

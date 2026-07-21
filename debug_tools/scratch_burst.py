@@ -1,3 +1,7 @@
+"""
+Diagnostic Tool: scratch_burst.py
+Experimental script used to reverse engineer and test burst transmission algorithms.
+"""
 import sys
 import os
 sys.path.insert(0, os.path.abspath('src'))

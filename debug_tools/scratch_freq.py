@@ -1,3 +1,7 @@
+"""
+Diagnostic Tool: scratch_freq.py
+Experimental script used to reverse engineer the Davis protocol frequency hopping patterns.
+"""
 import sys
 import os
 sys.path.insert(0, os.path.abspath('src'))

@@ -1,3 +1,7 @@
+"""
+Diagnostic Tool: test_tx.py
+Configures the CC1101 in transmit mode and repeatedly sends a mock Davis ISS FSK packet to verify TX capabilities and FSK bit polarity.
+"""
 import time
 import logging
 from rtldavis.cc1101 import CC1101

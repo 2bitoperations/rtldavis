@@ -1,3 +1,7 @@
+"""
+Diagnostic Tool: test_rtl433.py
+Invokes the `rtl_433` pulse analyzer to profile the exact timing, deviation, and pulse widths of the CC1101 FSK transmission.
+"""
 import time
 import logging
 from src.rtldavis.cc1101 import CC1101
