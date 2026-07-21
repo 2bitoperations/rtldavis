@@ -31,3 +31,6 @@ sensor.log
 /PyVantagePro/
 #/rtldavis2/
 /davis_vantage/
+
+# Host-specific deployment notes; not for the public repo
+/LOCAL_DEPLOYMENTS.md
