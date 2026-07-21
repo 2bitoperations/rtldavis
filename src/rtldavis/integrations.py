@@ -1,12 +1,10 @@
 import asyncio
-import logging
 
 def setup_integrations(args, sensor_store, mqtt_publisher):
     """
     Sets up the peripheral integrations (REST, WebSockets, Buttons, BME280)
     and returns a list of asyncio task handles that can be cancelled later.
     """
-    logger = logging.getLogger("rtldavis.integrations")
     tasks = []
     ws_server = None
 

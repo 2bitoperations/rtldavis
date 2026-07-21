@@ -34,7 +34,8 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         p = protocol.Parser(symbol_length=14, station_id=args.station_id, include_crc_failed=args.include_crc_failed)
         sdr.sample_rate = p.cfg.sample_rate
         sdr.gain = 'auto' if args.gain.lower() == 'auto' else float(args.gain)
-        if args.ppm != 0: sdr.freq_correction = args.ppm
+        if args.ppm != 0:
+            sdr.freq_correction = args.ppm
 
         if args.channel is not None and 0 <= args.channel <= 50:
             hop_idx = p.hop_pattern.index(args.channel)
@@ -71,7 +72,8 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         def _handle_msg_unified(msg):
             hopper.trigger()
             sensor_store.update(msg)
-            if mqtt_publisher: mqtt_publisher.publish(msg)
+            if mqtt_publisher:
+                mqtt_publisher.publish(msg)
             if ws_server:
                 asyncio.create_task(ws_server.broadcast("sensor", msg.sensor_values))
 

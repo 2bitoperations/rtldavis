@@ -1,5 +1,5 @@
 import numpy as np
-from src.rtldavis import dsp
+from rtldavis import dsp
 
 def test_quantize_polarity():
     """

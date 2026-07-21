@@ -347,16 +347,7 @@ class Parser:
             logger.warning(
                 f"Unknown sensor type: 0x{sensor_id:02X}. Raw data: {msg_data.hex()}"
             )
-            # We still want to return a message so the Hopper knows we received a valid packet!
-
-        msg = Message(
-            packet=pkt,
-            id=msg_id,
-            sensor_type=sensor_type,
-            sensor_values={},
-            raw_sensor_id=sensor_id,
-            raw_msg_type3=msg_data[2],
-        )
+            # We still want to return a message below so the Hopper knows we received a valid packet!
 
         raw_hex = msg_data.hex()
         log_msg = f"Decoded message for station ID {msg_id} (sensor: {sensor_type.name if sensor_type else 'Unknown'}):\n"
@@ -382,7 +373,7 @@ class Parser:
                 sensor_values.update(value)
             else:
                 sensor_values[decoder.config.id] = value
-        else:
+        elif sensor_type is not None:
             logger.warning(f"No decoder registered for sensor type {sensor_type.name}")
 
         return Message(

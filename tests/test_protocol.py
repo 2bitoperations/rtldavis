@@ -1,5 +1,4 @@
-import pytest
-from src.rtldavis import protocol
+from rtldavis import protocol
 
 def test_swap_bit_order():
     """
@@ -17,16 +16,21 @@ def test_crc_check():
     """
     Test the CRC functionality to ensure valid packets pass.
     """
-    from src.rtldavis.crc import CRC
-    crc = CRC()
-    
+    from rtldavis.crc import CRC
+    crc = CRC("CCITT-16", 0, 0x1021, 0)
+
     # Valid payload from a real rain packet:
     # 0xCB 0x89 is the sync word. The next 8 bytes are the payload + CRC.
     # Payload bytes: 07 C0 2B 0B 80 40
     # CRC bytes: 8E FF
+    # Over-the-air bytes are LSB-first; the real decode path bit-swaps each
+    # byte (see protocol.swap_bit_order / Parser.parse) before checksumming,
+    # so the test does the same.
     payload = bytes([0x07, 0xC0, 0x2B, 0x0B, 0x80, 0x40, 0x8E, 0xFF])
-    
-    assert crc.checksum(payload) == 0, "Valid packet should compute a 0 checksum"
-    
+    swapped = bytes(protocol.swap_bit_order(b) for b in payload)
+
+    assert crc.checksum(swapped) == 0, "Valid packet should compute a 0 checksum"
+
     bad_payload = bytes([0x07, 0xC0, 0x2B, 0x0B, 0x80, 0x40, 0x8E, 0xFE])
-    assert crc.checksum(bad_payload) != 0, "Invalid packet should fail checksum"
+    bad_swapped = bytes(protocol.swap_bit_order(b) for b in bad_payload)
+    assert crc.checksum(bad_swapped) != 0, "Invalid packet should fail checksum"
