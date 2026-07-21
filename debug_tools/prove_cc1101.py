@@ -1,6 +1,9 @@
 """
 Diagnostic Tool: prove_cc1101.py
-Hardware verification script that tests SPI communication and verifies that registers can be successfully read and written on the CC1101 chip.
+Transmits a continuous OOK test burst on 902.419 MHz + offset, forever, to
+verify the CC1101 can drive TX and that SPI register writes are taking
+effect. Run this only with intent - it keys the radio in an infinite loop
+until killed.
 """
 import time
 import logging
