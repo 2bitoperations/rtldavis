@@ -117,6 +117,9 @@ RTLDAVIS_MQTT_CLIENT_ID="davis-weather"
 RTLDAVIS_MQTT_DISCOVERY_PREFIX="homeassistant"
 RTLDAVIS_MQTT_STATE_PREFIX="rtldavis"
 
+# Seconds between aggregated MQTT publishes per station (default: 30)
+RTLDAVIS_MQTT_PUSH_INTERVAL=30
+
 # Station ID (optional, 0-7)
 # RTLDAVIS_STATION_ID=0
 
@@ -154,6 +157,7 @@ ExecStart=/bin/bash -c '$INSTALL_DIR/.venv/bin/python -m rtldavis \\
     --mqtt-client-id "\${RTLDAVIS_MQTT_CLIENT_ID}" \\
     --mqtt-discovery-prefix "\${RTLDAVIS_MQTT_DISCOVERY_PREFIX}" \\
     --mqtt-state-prefix "\${RTLDAVIS_MQTT_STATE_PREFIX}" \\
+    --mqtt-push-interval "\${RTLDAVIS_MQTT_PUSH_INTERVAL:-30}" \\
     \${RTLDAVIS_STATION_ID:+--station-id "\${RTLDAVIS_STATION_ID}"} \\
     --http-port "\${RTLDAVIS_HTTP_PORT:-8088}"'
 

@@ -152,6 +152,12 @@ async def main_async() -> int:
     parser.add_argument("--mqtt-username", help="MQTT username")
     parser.add_argument("--mqtt-password", help="MQTT password")
     parser.add_argument(
+        "--mqtt-push-interval",
+        type=int,
+        default=30,
+        help="Seconds between aggregated MQTT publishes per station (default: 30)",
+    )
+    parser.add_argument(
         "--http-port",
         type=int,
         default=8088,
@@ -206,6 +212,7 @@ async def main_async() -> int:
             client_id=args.mqtt_client_id,
             username=args.mqtt_username,
             password=args.mqtt_password,
+            push_interval=args.mqtt_push_interval,
         )
         mqtt_publisher.connect()
 
