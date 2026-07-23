@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 import logging
 import math
-import struct
 from typing import List
 
 import numpy as np
@@ -94,8 +93,7 @@ def quantize(in_float: np.ndarray, out_byte: np.ndarray) -> None:
     """
     Converts the demodulated signal into a stream of bits.
     """
-    for i, val in enumerate(in_float):
-        out_byte[i] = struct.unpack("Q", struct.pack("d", val))[0] >> 63
+    out_byte[: in_float.shape[0]] = np.signbit(in_float)
 
 
 class PacketConfig:

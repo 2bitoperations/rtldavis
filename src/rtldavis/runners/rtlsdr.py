@@ -14,6 +14,12 @@ try:
 except ImportError:
     HAS_RTLSDR = False
 
+# Caps how many raw sample blocks can back up between the SDR reader and the
+# DSP worker. Unbounded, a worker that can't keep up in real time would pile
+# samples up in the producer process's memory indefinitely (this is what
+# ran rockinrobin out of memory) instead of just dropping stale data.
+DATA_QUEUE_MAXSIZE = 32
+
 async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publisher):
     """Asynchronous runner for RTLSDR backend."""
     logger = logging.getLogger("rtldavis.rtlsdr")
@@ -55,7 +61,7 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         logger.warning(f"Tuned to {sdr.center_freq} Hz (US Band) - Waiting for sync...")
 
         # Set up multiprocessing
-        data_queue = multiprocessing.Queue()
+        data_queue = multiprocessing.Queue(maxsize=DATA_QUEUE_MAXSIZE)
         result_queue = multiprocessing.Queue()
         
         worker_process = multiprocessing.Process(
@@ -98,9 +104,17 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         tasks.append(result_reader_task)
 
         read_size = p.cfg.block_size
-        
+        dropped = 0
+
         async for samples in sdr.stream(num_samples_or_bytes=read_size):
-            data_queue.put(samples)
+            try:
+                data_queue.put_nowait(samples)
+            except queue.Full:
+                dropped += 1
+                if dropped % 100 == 1:
+                    logger.warning(
+                        f"DSP worker falling behind; dropped {dropped} sample block(s) so far"
+                    )
 
     except asyncio.CancelledError:
         logger.info("Stopping...")
@@ -111,7 +125,10 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         for t in tasks:
             t.cancel()
         if worker_process:
-            data_queue.put(None)  # Sentinel to stop worker
+            try:
+                data_queue.put(None, timeout=5)  # Sentinel to stop worker
+            except queue.Full:
+                pass
             worker_process.join(timeout=5)
             if worker_process.is_alive():
                 worker_process.terminate()

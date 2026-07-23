@@ -15,6 +15,11 @@ try:
 except ImportError:
     HAS_RTLSDR = False
 
+# See runners/rtlsdr.py: bounds how far the SDR reader can get ahead of the
+# DSP worker, so a worker that falls behind drops stale samples instead of
+# growing this process's memory without limit.
+DATA_QUEUE_MAXSIZE = 32
+
 async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publisher):
     """Diagnostic loop running RTLSDR and CC1101 concurrently."""
     logger = logging.getLogger("rtldavis.dual")
@@ -49,7 +54,7 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
 
         logger.warning(f"Dual Mode: RTLSDR tuned to {sdr.center_freq} Hz, CC1101 tuned to {hop.channel_freq + args.cc1101_offset} Hz - Waiting for sync...")
 
-        data_queue = multiprocessing.Queue()
+        data_queue = multiprocessing.Queue(maxsize=DATA_QUEUE_MAXSIZE)
         result_queue = multiprocessing.Queue()
         
         worker_process = multiprocessing.Process(
@@ -108,8 +113,17 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         tasks.append(cc1101_task)
 
         read_size = p.cfg.block_size
+        dropped = 0
+
         async for samples in sdr.stream(num_samples_or_bytes=read_size):
-            data_queue.put(samples)
+            try:
+                data_queue.put_nowait(samples)
+            except queue.Full:
+                dropped += 1
+                if dropped % 100 == 1:
+                    logger.warning(
+                        f"DSP worker falling behind; dropped {dropped} sample block(s) so far"
+                    )
 
     except asyncio.CancelledError:
         logger.info("Stopping...")
@@ -120,7 +134,10 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         for t in tasks:
             t.cancel()
         if worker_process:
-            data_queue.put(None)
+            try:
+                data_queue.put(None, timeout=5)
+            except queue.Full:
+                pass
             worker_process.join(timeout=2)
             if worker_process.is_alive():
                 worker_process.terminate()
