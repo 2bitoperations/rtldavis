@@ -88,8 +88,13 @@ def _rssi_to_dbm(raw: int) -> float:
 
 
 def _lqi_to_snr(lqi: int) -> float:
-    """Map CC1101 LQI (0-127, higher = better) to a rough SNR proxy in dB."""
-    return (lqi & 0x7F) / 2.55
+    """Map CC1101 LQI to a rough SNR proxy in dB.
+
+    Per the TI datasheet, raw LQI is 0-127 with LOWER values meaning better
+    link quality (fewer demodulator errors), the opposite of SNR. Invert it
+    so the returned value increases with signal quality like a real SNR.
+    """
+    return (127 - (lqi & 0x7F)) / 2.55
 
 
 class CC1101:
@@ -337,20 +342,6 @@ class CC1101:
             "OVERFLOW": overflow,
             "FIFO_DUMP": dump.hex()
         }
-
-        # Status byte bit 7: CRC_OK (always 1 since we disabled HW CRC,
-        # meaning the bit instead reflects "packet length matched")
-        rssi = _rssi_to_dbm(rssi_raw)
-        snr  = _lqi_to_snr(lqi_raw)
-
-        # Reconstruct the 10-byte layout protocol.parse() expects:
-        # [preamble_byte0, preamble_byte1, payload_0 … payload_7]
-        data_bytes = _DAVIS_PREAMBLE + payload
-        data = __import__("numpy").frombuffer(data_bytes, dtype=__import__("numpy").uint8)
-
-        logger.debug(f"CC1101 packet: {payload.hex()} RSSI={rssi:.1f} dBm LQI={lqi_raw & 0x7F}")
-
-        return dsp.Packet(index=-1, data=data, rssi=rssi, snr=snr)
 
     def flush_rx(self) -> None:
         self._strobe(_SIDLE)
