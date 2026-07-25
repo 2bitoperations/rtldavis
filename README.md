@@ -73,7 +73,15 @@ options:
                         Max age (seconds) of the last received Davis packet
                         before GET /v1/current_conditions reports an error
                         instead of data (WeatherLink Live compatibility
-                        endpoint). Default: 60.
+                        endpoint). Also used by the ASCOM console emulator
+                        (--ascom-port) to decide when to refuse LOOP requests.
+                        Default: 60.
+  --ascom-port ASCOM_PORT
+                        TCP port emulating a real Davis console's legacy
+                        serial protocol (wakeup/WRD/LOOP commands), for the
+                        blumzi/ASCOM.VantagePro driver's 'WeatherLinkIP'
+                        operational mode. Default: 22222 (matches that
+                        driver's own default).
 ```
 
 ### REST API
@@ -203,6 +211,44 @@ the 10-minute high.
 settings dialog, set "IP Address" to the Pi's LAN address and "TCP Port" to
 the same value as `--http-port` (default `8088`). There's no path/URL
 field — the plugin always requests `/v1/current_conditions` on its own.
+
+### ASCOM Console Emulator (`ASCOM.VantagePro` "WeatherLinkIP" mode)
+
+The application also runs a plain TCP server that speaks the legacy serial
+protocol a real Davis console exposes over its network port, well enough
+that the [`blumzi/ASCOM.VantagePro`](https://github.com/blumzi/ASCOM.VantagePro)
+*ObservingConditions* driver's **WeatherLinkIP** operational mode treats
+rtldavis as a genuine IP-connected console — no fork of that driver needed.
+
+**Port:** `--ascom-port` (default `22222`, matching the driver's own default).
+
+**Protocol:** the driver wakes the console (any byte in, `\n\r` back), asks
+for the station model (`WRD\x12\x4D\n` -> ACK + one model byte, reported as
+16 = "Vantage Pro or Vantage Pro 2"), then polls with `LOOP 1\n` -> ACK
+followed by a 99-byte binary LOOP packet (temperature, wind speed/direction/
+gust, humidity, barometer, rain rate, terminated by a CRC-16-CCITT trailer)
+on whatever interval the driver's Setup dialog is configured for.
+
+**Fails safe**, like the WeatherLink Live endpoint above: if no real Davis
+packet has arrived within `--weatherlink-stale-seconds`, LOOP requests are
+refused (connection closed, no ACK) rather than answered with stale or
+fabricated conditions — the driver's own `TimeSinceLastUpdate` then reflects
+the outage instead of showing confident-looking old numbers.
+
+**Barometer** is only populated when `--bme280` is enabled and has a fresh
+reading; otherwise the field reports 0 rather than a fabricated pressure.
+
+**Known upstream driver quirks** (not fixable from the server side without
+forking `ASCOM.VantagePro`):
+- `RainRate` is exposed in the raw Davis wire units (hundredths of an inch
+  per hour, i.e. "clicks/hour" at a 0.01in bucket size) because that driver
+  reads the LOOP packet's rain-rate field directly with no unit conversion.
+- `WindGust`'s LOOP field is re-multiplied by 10 mph by the driver before
+  converting to m/s, capping its effective resolution to multiples of 10 mph.
+
+**ASCOM.VantagePro setup:** in the driver's Setup dialog, choose
+**WeatherLinkIP** as the Operational Mode and set the IP Address to the Pi's
+LAN address (Port defaults to `22222`, matching `--ascom-port`'s default).
 
 ### Raspberry Pi OS Installation (Bookworm/Trixie)
 

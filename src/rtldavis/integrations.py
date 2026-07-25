@@ -26,6 +26,14 @@ def setup_integrations(args, sensor_store, mqtt_publisher):
     rest_server_task = asyncio.create_task(start_rest_server(args.http_port, routes))
     tasks.append(rest_server_task)
 
+    # 1b. Davis console emulator (ASCOM.VantagePro "WeatherLinkIP" mode)
+    from .davis_console import start_console_server
+
+    console_task = asyncio.create_task(
+        start_console_server(args.ascom_port, sensor_store, wind_window, args.weatherlink_stale_seconds)
+    )
+    tasks.append(console_task)
+
     # 2. WebSocket Server
     from .websocket_server import start_ws_server
     ws_server = start_ws_server(args.ws_port)

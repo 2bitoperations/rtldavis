@@ -169,7 +169,18 @@ async def main_async() -> int:
         default=60,
         help="Max age (seconds) of the last received Davis packet before "
              "GET /v1/current_conditions reports an error instead of data "
-             "(WeatherLink Live compatibility endpoint). Default: 60.",
+             "(WeatherLink Live compatibility endpoint). Also used by the "
+             "ASCOM console emulator (--ascom-port) to decide when to refuse "
+             "LOOP requests. Default: 60.",
+    )
+    parser.add_argument(
+        "--ascom-port",
+        type=int,
+        default=22222,
+        help="TCP port emulating a real Davis console's legacy serial "
+             "protocol (wakeup/WRD/LOOP commands), for the blumzi/"
+             "ASCOM.VantagePro driver's 'WeatherLinkIP' operational mode. "
+             "Default: 22222 (matches that driver's own default).",
     )
     parser.add_argument("--bme280", action="store_true", help="Enable local BME280 I2C sensor reading")
     parser.add_argument("--bme280-i2c-bus", type=int, default=1, help="I2C bus number for BME280 (default: 1)")
