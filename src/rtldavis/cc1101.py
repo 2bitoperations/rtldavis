@@ -87,14 +87,21 @@ def _rssi_to_dbm(raw: int) -> float:
     return raw / 2.0 - 74.0
 
 
-def _lqi_to_snr(lqi: int) -> float:
-    """Map CC1101 LQI to a rough SNR proxy in dB.
+def _lqi_to_link_quality_pct(lqi: int) -> float:
+    """Map CC1101 LQI to a relative link-quality percentage (0-100, higher better).
 
-    Per the TI datasheet, raw LQI is 0-127 with LOWER values meaning better
-    link quality (fewer demodulator errors), the opposite of SNR. Invert it
-    so the returned value increases with signal quality like a real SNR.
+    Per the TI CC1101 datasheet (SWRS061, Sec 17.6), LQI is "a metric of the
+    current quality of the received signal" computed by "accumulating the
+    magnitude of the error between ideal constellations and the received
+    signal over the 64 symbols immediately following the sync word." Raw LQI
+    is 0-127 with LOWER values meaning better link quality, and the datasheet
+    is explicit that it's "best used as a relative measurement of the link
+    quality... since the value is dependent on the modulation format" -- i.e.
+    there is no datasheet-defined conversion from LQI to a physical SNR/dB
+    figure. This just inverts and normalizes it to a 0-100% scale so higher
+    reads as better, without pretending it's a real SNR.
     """
-    return (127 - (lqi & 0x7F)) / 2.55
+    return (127 - (lqi & 0x7F)) / 127 * 100
 
 
 class CC1101:
@@ -279,13 +286,13 @@ class CC1101:
         # Status byte bit 7: CRC_OK (always 1 since we disabled HW CRC,
         # meaning the bit instead reflects "packet length matched")
         rssi = _rssi_to_dbm(rssi_raw)
-        snr = _lqi_to_snr(lqi_raw)
+        link_quality = _lqi_to_link_quality_pct(lqi_raw)
 
         return dsp.Packet(
             index=-1,
             data=np.array(list(payload), dtype=np.uint8),
             rssi=rssi,
-            snr=snr
+            link_quality=link_quality,
         )
 
     def transmit_packet(self, data: bytes) -> None:

@@ -12,4 +12,5 @@ from .common import (
     WindGustSensor,
     RSSISensor,
     SNRSensor,
+    LinkQualitySensor,
 )

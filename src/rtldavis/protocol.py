@@ -23,6 +23,7 @@ from .decoders import (
     WindGustSensor,
     RSSISensor,
     SNRSensor,
+    LinkQualitySensor,
 )
 from .sensor_classes import AbstractSensor
 
@@ -299,7 +300,12 @@ class Parser:
                     logger.warning(f"CRC FAILED on: {data_hex}")
                 continue
 
-            logger.info(f"CRC check OK. RSSI: {pkt.rssi:.2f} dB, SNR: {pkt.snr:.2f} dB")
+            if pkt.snr is not None:
+                logger.info(f"CRC check OK. RSSI: {pkt.rssi:.2f} dB, SNR: {pkt.snr:.2f} dB")
+            elif pkt.link_quality is not None:
+                logger.info(f"CRC check OK. RSSI: {pkt.rssi:.2f} dB, Link Quality: {pkt.link_quality:.1f}%")
+            else:
+                logger.info(f"CRC check OK. RSSI: {pkt.rssi:.2f} dB")
 
             if pkt.index >= 0:
                 preamble_start = pkt.index
@@ -364,7 +370,10 @@ class Parser:
         sensor_values["wind_speed"] = WindSpeedSensor(logger).decode(msg_data)
         sensor_values["wind_direction"] = WindDirectionSensor(logger).decode(msg_data)
         sensor_values["rssi"] = RSSISensor(logger).decode(pkt.rssi)
-        sensor_values["snr"] = SNRSensor(logger).decode(pkt.snr)
+        if pkt.snr is not None:
+            sensor_values["snr"] = SNRSensor(logger).decode(pkt.snr)
+        if pkt.link_quality is not None:
+            sensor_values["link_quality"] = LinkQualitySensor(logger).decode(pkt.link_quality)
 
         if sensor_type in self.sensor_decoders:
             decoder = self._get_decoder(msg_id, sensor_type)

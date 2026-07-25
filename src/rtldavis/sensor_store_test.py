@@ -17,7 +17,7 @@ class TestSensorStoreMetadata(unittest.TestCase):
     def test_known_sensors_have_metadata(self):
         # Sensors declared by the common decoders should all be pre-loaded.
         for sensor_id in ("wind_speed", "wind_direction", "wind_gust_speed",
-                          "temperature", "humidity", "rssi", "snr"):
+                          "temperature", "humidity", "rssi", "snr", "link_quality"):
             self.assertIn(sensor_id, self.store._metadata, f"Missing metadata for {sensor_id}")
 
     def test_rain_variants_come_from_all_configs(self):

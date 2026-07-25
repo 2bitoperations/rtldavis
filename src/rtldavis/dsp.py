@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import logging
 import math
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -13,7 +13,17 @@ class Packet:
     index: int
     data: np.ndarray
     rssi: float
-    snr: float
+    # True SNR in dB, computed from actual signal/noise power (see the RTL-SDR
+    # path below). None when the packet came from the CC1101 hardware path,
+    # which has no noise-floor measurement to compute a real SNR from -- see
+    # link_quality instead.
+    snr: Optional[float] = None
+    # Relative link-quality percentage (0-100, higher is better) derived from
+    # the CC1101's LQI status byte. Per the CC1101 datasheet (TI SWRS061,
+    # Sec 17.6), LQI is a modulation-dependent, relative-only metric with no
+    # defined conversion to a physical SNR/dB value, so it's kept as a
+    # distinct field rather than faked into snr. None for the RTL-SDR path.
+    link_quality: Optional[float] = None
 
 
 class ByteToCmplxLUT:

@@ -99,6 +99,11 @@ class RSSISensor(AbstractSensor):
 
 
 class SNRSensor(AbstractSensor):
+    """True SNR in dB, only ever populated by the RTL-SDR software-demod path
+    (dsp.py), which computes it from actual measured signal/noise power. The
+    CC1101 hardware path has no equivalent measurement -- see
+    LinkQualitySensor below."""
+
     @property
     def config(self) -> MQTTSensorConfig:
         return MQTTSensorConfig(
@@ -107,6 +112,29 @@ class SNRSensor(AbstractSensor):
             device_class="signal_strength",
             unit_of_measurement="dB",
             state_class="measurement",
+            diagnostic=True,
+        )
+
+    def decode(self, data: float) -> float:
+        return data
+
+
+class LinkQualitySensor(AbstractSensor):
+    """Relative link-quality percentage (0-100, higher better), only ever
+    populated by the CC1101 hardware path from its LQI status byte. Per the
+    CC1101 datasheet (TI SWRS061, Sec 17.6) LQI has no defined conversion to
+    a physical SNR/dB value -- it's an explicitly relative-only, modulation-
+    dependent metric -- so it's kept separate from SNRSensor rather than
+    mislabeled as one."""
+
+    @property
+    def config(self) -> MQTTSensorConfig:
+        return MQTTSensorConfig(
+            name="Link Quality",
+            id="link_quality",
+            unit_of_measurement="%",
+            state_class="measurement",
+            icon="mdi:signal-cellular-outline",
             diagnostic=True,
         )
 
