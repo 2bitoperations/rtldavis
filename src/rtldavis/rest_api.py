@@ -1,18 +1,26 @@
 """
-Minimal asyncio HTTP server exposing a read-only REST endpoint for sensor data.
+Minimal asyncio HTTP server exposing read-only REST endpoints for sensor data.
 """
 import asyncio
 import json
 import logging
-from typing import Callable
+from typing import Callable, Dict
 
 logger = logging.getLogger(__name__)
+
+RouteHandler = Callable[[], dict]
+
+
+def _normalize_path(path: str) -> str:
+    if len(path) > 1 and path.endswith("/"):
+        return path[:-1]
+    return path
 
 
 async def _handle(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    get_data: Callable[[], dict],
+    routes: Dict[str, RouteHandler],
 ) -> None:
     try:
         request_line = await reader.readline()
@@ -26,8 +34,10 @@ async def _handle(
         method = parts[0] if parts else ""
         path = parts[1] if len(parts) > 1 else ""
 
-        if method == "GET" and path in ("/sensors", "/sensors/"):
-            body = json.dumps(get_data(), indent=None)
+        handler = routes.get(_normalize_path(path)) if method == "GET" else None
+
+        if handler is not None:
+            body = json.dumps(handler(), indent=None)
             body_bytes = body.encode()
             status = "200 OK"
             content_type = "application/json"
@@ -52,14 +62,15 @@ async def _handle(
         writer.close()
 
 
-async def start_rest_server(port: int, get_data: Callable[[], dict]) -> None:
+async def start_rest_server(port: int, routes: Dict[str, RouteHandler]) -> None:
     """Start the HTTP server and log the listening address."""
     server = await asyncio.start_server(
-        lambda r, w: _handle(r, w, get_data),
+        lambda r, w: _handle(r, w, routes),
         host="0.0.0.0",
         port=port,
     )
     addrs = ", ".join(str(s.getsockname()) for s in server.sockets)
-    logger.warning(f"REST API listening on {addrs} — GET /sensors")
+    routes_str = ", ".join(f"GET {path}" for path in routes)
+    logger.warning(f"REST API listening on {addrs} — {routes_str}")
     async with server:
         await server.serve_forever()

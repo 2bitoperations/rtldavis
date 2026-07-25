@@ -31,7 +31,7 @@ async def run(args, log_level, sensor_store, mqtt_publisher):
             f"CC1101 Tuned to {hop.channel_freq + args.cc1101_offset} Hz - Waiting for sync..."
         )
 
-        tasks, ws_server = setup_integrations(args, sensor_store, mqtt_publisher)
+        tasks, ws_server, wind_window = setup_integrations(args, sensor_store, mqtt_publisher)
 
         def set_freq(hop_obj):
             radio.set_frequency(hop_obj.channel_freq + args.cc1101_offset)
@@ -49,6 +49,9 @@ async def run(args, log_level, sensor_store, mqtt_publisher):
                 hopper.trigger()
                 logger.info(f"Received: {msg}")
                 sensor_store.update(msg)
+                wind_speed = msg.sensor_values.get("wind_speed")
+                if wind_speed is not None:
+                    wind_window.record(wind_speed, msg.sensor_values.get("wind_direction"))
                 if mqtt_publisher:
                     mqtt_publisher.publish(msg)
                 if ws_server:

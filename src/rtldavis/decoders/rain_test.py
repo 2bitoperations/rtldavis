@@ -1,4 +1,5 @@
 import logging
+import time
 import unittest
 
 from .rain import RainTotalSensor
@@ -38,8 +39,27 @@ class TestRainTotalDecoder(unittest.TestCase):
     def test_result_contains_all_keys(self):
         self.decoder.decode(_packet(0x00))
         result = self.decoder.decode(_packet(0x01))
-        for key in ("rain_total_raw", "rain_total_hourly", "rain_total_daily", "rain_total_weekly"):
+        for key in ("rain_total_raw", "rain_total_15min", "rain_total_hourly",
+                    "rain_total_daily", "rain_total_weekly"):
             self.assertIn(key, result)
+
+    def test_15min_window_excludes_clicks_older_than_15_minutes(self):
+        self.decoder.decode(_packet(0x00))   # baseline
+        result = self.decoder.decode(_packet(0x05))  # +5 clicks, all recorded "now"
+
+        # All 5 clicks are fresh, so they should count towards the 15-minute window.
+        self.assertAlmostEqual(result["rain_total_15min"], 0.05, delta=0.001)
+
+        # Manually age out all but one of the recorded click timestamps, as if
+        # they'd actually happened 20 minutes ago.
+        twenty_min_ago = time.time() - 1200
+        for i in range(len(self.decoder.clicks_history) - 1):
+            self.decoder.clicks_history[i] = twenty_min_ago
+
+        # Re-decoding the same counter value (no new clicks) should now report
+        # only the one click timestamp that's still within the 15-minute window.
+        result = self.decoder.decode(_packet(0x05))
+        self.assertAlmostEqual(result["rain_total_15min"], 0.01, delta=0.001)
 
 
 class TestRainRateDecoder(unittest.TestCase):

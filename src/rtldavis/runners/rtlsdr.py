@@ -71,7 +71,7 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         worker_process.start()
 
         # Set up peripherals
-        tasks, ws_server = setup_integrations(args, sensor_store, mqtt_publisher)
+        tasks, ws_server, wind_window = setup_integrations(args, sensor_store, mqtt_publisher)
 
         # Set up Hopper
         def set_freq(hop_obj):
@@ -91,6 +91,9 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
                         hopper.trigger()
                         logger.info(f"Received: {msg}")
                         sensor_store.update(msg)
+                        wind_speed = msg.sensor_values.get("wind_speed")
+                        if wind_speed is not None:
+                            wind_window.record(wind_speed, msg.sensor_values.get("wind_direction"))
                         if mqtt_publisher:
                             mqtt_publisher.publish(msg)
                         if ws_server:

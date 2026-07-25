@@ -63,7 +63,7 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         )
         worker_process.start()
 
-        tasks, ws_server = setup_integrations(args, sensor_store, mqtt_publisher)
+        tasks, ws_server, wind_window = setup_integrations(args, sensor_store, mqtt_publisher)
 
         def set_freq(hop_obj):
             sdr.center_freq = hop_obj.channel_freq + hop_obj.freq_corr
@@ -77,6 +77,9 @@ async def run(args, log_level, devices, selected_device, sensor_store, mqtt_publ
         def _handle_msg_unified(msg):
             hopper.trigger()
             sensor_store.update(msg)
+            wind_speed = msg.sensor_values.get("wind_speed")
+            if wind_speed is not None:
+                wind_window.record(wind_speed, msg.sensor_values.get("wind_direction"))
             if mqtt_publisher:
                 mqtt_publisher.publish(msg)
             if ws_server:

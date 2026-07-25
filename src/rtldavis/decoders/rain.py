@@ -31,6 +31,14 @@ _RAIN_TOTAL_WEEKLY = MQTTSensorConfig(
     state_class="total",
     icon="mdi:weather-pouring",
 )
+_RAIN_TOTAL_15MIN = MQTTSensorConfig(
+    name="Rain Total 15min",
+    id="rain_total_15min",
+    device_class="precipitation",
+    unit_of_measurement="in",
+    state_class="total",
+    icon="mdi:weather-pouring",
+)
 
 class RainTotalSensor(AbstractSensor):
     """
@@ -56,7 +64,7 @@ class RainTotalSensor(AbstractSensor):
 
     @property
     def all_configs(self) -> list[MQTTSensorConfig]:
-        return [self.config, _RAIN_TOTAL_HOURLY, _RAIN_TOTAL_DAILY, _RAIN_TOTAL_WEEKLY]
+        return [self.config, _RAIN_TOTAL_HOURLY, _RAIN_TOTAL_DAILY, _RAIN_TOTAL_WEEKLY, _RAIN_TOTAL_15MIN]
 
     def decode(self, data: bytes) -> dict:
         """
@@ -91,19 +99,22 @@ class RainTotalSensor(AbstractSensor):
         self.logger.info(f"    - Total Rainfall (Raw): {total_inches:.2f} inches")
 
         now = time.time()
+        fifteen_min_ago = now - 900
         one_hour_ago = now - 3600
         one_day_ago = now - 86400
         one_week_ago = now - 604800
 
         while self.clicks_history and self.clicks_history[0] < one_week_ago:
             self.clicks_history.popleft()
-        
+
+        fifteen_min_clicks = sum(1 for t in self.clicks_history if t > fifteen_min_ago)
         hourly_clicks = sum(1 for t in self.clicks_history if t > one_hour_ago)
         daily_clicks = sum(1 for t in self.clicks_history if t > one_day_ago)
         weekly_clicks = len(self.clicks_history)
 
         return {
             "rain_total_raw": total_inches,
+            "rain_total_15min": fifteen_min_clicks * 0.01,
             "rain_total_hourly": hourly_clicks * 0.01,
             "rain_total_daily": daily_clicks * 0.01,
             "rain_total_weekly": weekly_clicks * 0.01,

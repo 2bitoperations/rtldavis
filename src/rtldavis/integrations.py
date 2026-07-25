@@ -3,16 +3,27 @@ import asyncio
 def setup_integrations(args, sensor_store, mqtt_publisher):
     """
     Sets up the peripheral integrations (REST, WebSockets, Buttons, BME280)
-    and returns a list of asyncio task handles that can be cancelled later.
+    and returns a list of asyncio task handles that can be cancelled later,
+    along with the WebSocket server and the wind rolling-window tracker used
+    by the WeatherLink-compatibility endpoint.
     """
     tasks = []
     ws_server = None
 
-    # 1. REST API
+    # 1. REST API (GET /sensors and GET /v1/current_conditions)
     from .rest_api import start_rest_server
-    rest_server_task = asyncio.create_task(
-        start_rest_server(args.http_port, sensor_store.to_response)
-    )
+    from .weatherlink import WindRollingWindow, build_current_conditions
+
+    wind_window = WindRollingWindow()
+    device_id = f"rtldavis-station-{args.station_id}" if args.station_id is not None else "rtldavis"
+
+    routes = {
+        "/sensors": sensor_store.to_response,
+        "/v1/current_conditions": lambda: build_current_conditions(
+            sensor_store, wind_window, args.weatherlink_stale_seconds, device_id
+        ),
+    }
+    rest_server_task = asyncio.create_task(start_rest_server(args.http_port, routes))
     tasks.append(rest_server_task)
 
     # 2. WebSocket Server
@@ -44,4 +55,4 @@ def setup_integrations(args, sensor_store, mqtt_publisher):
         )
         tasks.append(bme280_task_handle)
 
-    return tasks, ws_server
+    return tasks, ws_server, wind_window

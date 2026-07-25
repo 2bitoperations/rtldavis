@@ -67,7 +67,13 @@ options:
   --mqtt-password MQTT_PASSWORD
                         MQTT password
   --http-port HTTP_PORT
-                        Port for the REST API server (GET /sensors). Default: 8088.
+                        Port for the REST API server (GET /sensors, GET
+                        /v1/current_conditions). Default: 8088.
+  --weatherlink-stale-seconds WEATHERLINK_STALE_SECONDS
+                        Max age (seconds) of the last received Davis packet
+                        before GET /v1/current_conditions reports an error
+                        instead of data (WeatherLink Live compatibility
+                        endpoint). Default: 60.
 ```
 
 ### REST API
@@ -118,7 +124,85 @@ Each entry contains:
 
 The response only includes sensors for which at least one reading has been received since startup. No authentication is required.
 
-Known sensor keys include: `wind_speed`, `wind_direction`, `wind_gust_speed`, `temperature`, `humidity`, `rain_total_raw`, `rain_total_hourly`, `rain_total_daily`, `rain_total_weekly`, `rain_rate`, `uv_index`, `solar_radiation`, `light`, `supercap_voltage`, `rssi`, `snr`.
+Known sensor keys include: `wind_speed`, `wind_direction`, `wind_gust_speed`, `temperature`, `humidity`, `rain_total_raw`, `rain_total_15min`, `rain_total_hourly`, `rain_total_daily`, `rain_total_weekly`, `rain_rate`, `uv_index`, `solar_radiation`, `light`, `supercap_voltage`, `rssi`, `snr`.
+
+### WeatherLink Live Compatibility API
+
+The application also serves an endpoint that mimics the local API of a real
+Davis WeatherLink Live hub, well enough that the
+[`rpineau/WeatherLink`](https://github.com/rpineau/WeatherLink) X2 plugin —
+used by **TheSkyX** and **MaximDL** for automated dome/roof-close safety
+monitoring — treats it as a genuine WeatherLink device.
+
+**Endpoint:** `GET /v1/current_conditions`
+
+**Port:** the same as the plain REST API above (`--http-port`, default
+`8088`) — there's no separate port or path to configure. The X2 plugin's
+settings dialog only has an IP address and TCP port field; it always
+requests `/v1/current_conditions` off of whatever host:port you give it.
+
+**Success response** (shape matches the real WeatherLink Live local API):
+
+```json
+{
+  "data": {
+    "did": "rtldavis-station-0",
+    "ts": 1711497600,
+    "conditions": [
+      {
+        "data_structure_type": 1,
+        "txid": 1,
+        "temp": 68.4,
+        "hum": 45.2,
+        "dew_point": 46.1,
+        "wind_speed_avg_last_2_min": 5.2,
+        "wind_speed_hi_last_10_min": 12.1,
+        "wind_dir_at_hi_speed_last_10_min": 270,
+        "rainfall_last_15_min": 0,
+        "rain_rate_last": 0.0,
+        "uv_index": 2.1,
+        "solar_rad": 340.0
+      },
+      {
+        "data_structure_type": 3,
+        "bar_sea_level": 29.92
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+The `data_structure_type: 3` (barometer) block is only included when a local
+BME280 (`--bme280`) is enabled and its pressure reading is fresh; it's
+omitted entirely otherwise, which the plugin tolerates.
+
+**Failure response** — returned (still as HTTP 200, matching the real
+device's own error contract) whenever no real Davis packet has been
+received recently enough:
+
+```json
+{"data": null, "error": "No sensor data received in the last 60s"}
+```
+
+This is a deliberate fail-safe: rather than reporting fabricated calm/dry
+conditions when the receiver is stale or offline, the endpoint reports an
+error so a roof-close decision built on this data doesn't get told
+everything is fine when it might not be. The staleness threshold is
+configurable via `--weatherlink-stale-seconds` (default: `60`, comfortably
+covering one full Davis frequency-hop cycle at ~2.5s/hop plus an occasional
+missed packet).
+
+`wind_speed_avg_last_2_min` and `wind_speed_hi_last_10_min` are computed
+from a real rolling window of every wind sample received over the radio
+(not just whatever the latest single reading happens to be at poll time),
+so a gust between two of the plugin's 5-second polls is still reflected in
+the 10-minute high.
+
+**TheSkyX / MaximDL setup:** in the `rpineau/WeatherLink` X2 plugin's
+settings dialog, set "IP Address" to the Pi's LAN address and "TCP Port" to
+the same value as `--http-port` (default `8088`). There's no path/URL
+field — the plugin always requests `/v1/current_conditions` on its own.
 
 ### Raspberry Pi OS Installation (Bookworm/Trixie)
 

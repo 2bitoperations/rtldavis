@@ -161,7 +161,15 @@ async def main_async() -> int:
         "--http-port",
         type=int,
         default=8088,
-        help="Port for the REST API server (GET /sensors). Default: 8088.",
+        help="Port for the REST API server (GET /sensors, GET /v1/current_conditions). Default: 8088.",
+    )
+    parser.add_argument(
+        "--weatherlink-stale-seconds",
+        type=int,
+        default=60,
+        help="Max age (seconds) of the last received Davis packet before "
+             "GET /v1/current_conditions reports an error instead of data "
+             "(WeatherLink Live compatibility endpoint). Default: 60.",
     )
     parser.add_argument("--bme280", action="store_true", help="Enable local BME280 I2C sensor reading")
     parser.add_argument("--bme280-i2c-bus", type=int, default=1, help="I2C bus number for BME280 (default: 1)")
