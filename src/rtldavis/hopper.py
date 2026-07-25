@@ -9,15 +9,42 @@ class Hopper:
         self.logger = logging.getLogger("rtldavis.hopper")
         self.packet_received_event = asyncio.Event()
         self.MAX_MISSED = 50
+        # A transmitter cycles through every channel in the hop table once
+        # per full cycle (MAX_MISSED dwell periods, chosen to match: both
+        # numbers represent "long enough that a reachable transmitter should
+        # have hit every channel at least once"). Camping on a single
+        # channel for less than that would abandon it before it could ever
+        # have been heard; there's no benefit to waiting longer, since a
+        # channel that's stayed silent for a full cycle is either not being
+        # reached at all, or something channel-specific (interference,
+        # hardware quirk) is blocking it -- in both cases picking a new
+        # random channel is worth trying.
+        self.SCAN_TIMEOUT_S = self.MAX_MISSED * self.p.dwell_time
 
     async def run(self):
         """
         Main hop sequence loop. Must be run as an asyncio task.
         """
         while True:
-            # Wait for first sync packet
-            await self.packet_received_event.wait()
-            self.packet_received_event.clear()
+            # Scan/acquisition mode: listen on whatever channel we're
+            # currently tuned to. If nothing arrives within one full
+            # hop-cycle's worth of dwell time, try a different random
+            # channel instead of camping forever on a possibly-bad pick.
+            while True:
+                try:
+                    await asyncio.wait_for(
+                        self.packet_received_event.wait(), timeout=self.SCAN_TIMEOUT_S
+                    )
+                    self.packet_received_event.clear()
+                    break
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        f"No packet heard in {self.SCAN_TIMEOUT_S:.1f}s while scanning; "
+                        "trying a different random channel."
+                    )
+                    scan_hop = self.p.rand_hop()
+                    self.set_freq_callback(scan_hop)
+
             self.logger.info("Synced! Starting hop sequence.")
 
             # Wait 500ms before hopping so any SDR workers have time to finish decoding their buffers
