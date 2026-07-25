@@ -137,10 +137,14 @@ async def _handle_console(
     stale_after_s: float,
     station_model: int,
 ) -> None:
+    peer = writer.get_extra_info("peername")
+    logger.info(f"Console: client connected from {peer}")
+
     try:
         # Wakeup: any byte wakes a real console, which replies "\n\r".
         first_byte = await asyncio.wait_for(reader.read(1), timeout=5.0)
         if not first_byte:
+            logger.info(f"Console: {peer} disconnected before sending a wakeup byte")
             return
         writer.write(b"\n\r")
         await writer.drain()
@@ -148,22 +152,28 @@ async def _handle_console(
         line = await asyncio.wait_for(reader.readuntil(b"\n"), timeout=5.0)
 
         if line.startswith(b"WRD"):
+            logger.info(f"Console: {peer} requested station type -> model {station_model}")
             writer.write(bytes([ACK, station_model]))
             await writer.drain()
         elif line.strip() == b"LOOP 1":
             packet = build_loop_packet(sensor_store, wind_window, stale_after_s)
             if packet is None:
-                logger.debug("Console: refusing LOOP request, no fresh Davis data")
+                logger.warning(
+                    f"Console: {peer} requested LOOP data but no Davis packet has been "
+                    f"received in the last {stale_after_s}s -- refusing (no ACK sent)"
+                )
                 return
+            logger.info(f"Console: {peer} requested LOOP data -> sent (ACK + {len(packet)}-byte packet)")
             writer.write(bytes([ACK]))
             writer.write(packet)
             await writer.drain()
         else:
-            logger.debug(f"Console: unrecognized command {line!r}")
+            logger.info(f"Console: {peer} sent unrecognized command {line!r}")
     except (asyncio.TimeoutError, asyncio.IncompleteReadError, ConnectionError) as exc:
-        logger.debug(f"Console handler error: {exc}")
+        logger.info(f"Console: {peer} handler ended early: {exc!r}")
     finally:
         writer.close()
+        logger.info(f"Console: connection from {peer} closed")
 
 
 async def start_console_server(

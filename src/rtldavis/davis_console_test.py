@@ -127,49 +127,64 @@ class TestConsoleServerHandshake(unittest.IsolatedAsyncioTestCase):
         await self.server.wait_closed()
 
     async def test_wrd_command_returns_ack_and_model_byte(self):
-        reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
-        writer.write(b"\r")
-        await writer.drain()
-        wakeup = await reader.readexactly(2)
-        self.assertEqual(wakeup, b"\n\r")
+        with self.assertLogs("rtldavis.davis_console", level="INFO") as logs:
+            reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+            writer.write(b"\r")
+            await writer.drain()
+            wakeup = await reader.readexactly(2)
+            self.assertEqual(wakeup, b"\n\r")
 
-        writer.write(b"WRD\x12\x4d\n")
-        await writer.drain()
-        reply = await reader.readexactly(2)
-        self.assertEqual(reply[0], ACK)
-        self.assertEqual(reply[1], STATION_MODEL_VANTAGE_PRO2)
-        writer.close()
+            writer.write(b"WRD\x12\x4d\n")
+            await writer.drain()
+            reply = await reader.readexactly(2)
+            self.assertEqual(reply[0], ACK)
+            self.assertEqual(reply[1], STATION_MODEL_VANTAGE_PRO2)
+            writer.close()
+            await asyncio.sleep(0.05)
+
+        joined = "\n".join(logs.output)
+        self.assertIn("client connected", joined)
+        self.assertIn("requested station type", joined)
 
     async def test_loop_command_returns_ack_and_packet_when_fresh(self):
         self.window.record(10.0, timestamp=None)
         self.store.update(_msg(temperature=70.0, humidity=50.0))
 
-        reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
-        writer.write(b"\r")
-        await writer.drain()
-        await reader.readexactly(2)
+        with self.assertLogs("rtldavis.davis_console", level="INFO") as logs:
+            reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+            writer.write(b"\r")
+            await writer.drain()
+            await reader.readexactly(2)
 
-        writer.write(b"LOOP 1\n")
-        await writer.drain()
-        ack = await reader.readexactly(1)
-        self.assertEqual(ack[0], ACK)
-        packet = await reader.readexactly(LOOP_PACKET_LEN)
-        self.assertEqual(packet[0:3], b"LOO")
-        self.assertEqual(_CRC.checksum(packet), 0)
-        writer.close()
+            writer.write(b"LOOP 1\n")
+            await writer.drain()
+            ack = await reader.readexactly(1)
+            self.assertEqual(ack[0], ACK)
+            packet = await reader.readexactly(LOOP_PACKET_LEN)
+            self.assertEqual(packet[0:3], b"LOO")
+            self.assertEqual(_CRC.checksum(packet), 0)
+            writer.close()
+            await asyncio.sleep(0.05)
+
+        joined = "\n".join(logs.output)
+        self.assertIn("requested LOOP data -> sent", joined)
 
     async def test_loop_command_closes_connection_without_ack_when_stale(self):
         # No samples recorded -> build_loop_packet returns None -> fail-safe refusal.
-        reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
-        writer.write(b"\r")
-        await writer.drain()
-        await reader.readexactly(2)
+        with self.assertLogs("rtldavis.davis_console", level="INFO") as logs:
+            reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+            writer.write(b"\r")
+            await writer.drain()
+            await reader.readexactly(2)
 
-        writer.write(b"LOOP 1\n")
-        await writer.drain()
-        remaining = await reader.read(1)
-        self.assertEqual(remaining, b"")
-        writer.close()
+            writer.write(b"LOOP 1\n")
+            await writer.drain()
+            remaining = await reader.read(1)
+            self.assertEqual(remaining, b"")
+            writer.close()
+
+        joined = "\n".join(logs.output)
+        self.assertIn("refusing", joined)
 
 
 class TestStartConsoleServer(unittest.IsolatedAsyncioTestCase):
