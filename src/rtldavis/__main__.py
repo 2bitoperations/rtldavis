@@ -166,12 +166,12 @@ async def main_async() -> int:
     parser.add_argument(
         "--weatherlink-stale-seconds",
         type=int,
-        default=60,
+        default=300,
         help="Max age (seconds) of the last received Davis packet before "
              "GET /v1/current_conditions reports an error instead of data "
              "(WeatherLink Live compatibility endpoint). Also used by the "
              "ASCOM console emulator (--ascom-port) to decide when to refuse "
-             "LOOP requests. Default: 60.",
+             "LOOP requests. Default: 300.",
     )
     parser.add_argument(
         "--ascom-port",

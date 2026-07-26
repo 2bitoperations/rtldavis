@@ -75,7 +75,7 @@ options:
                         instead of data (WeatherLink Live compatibility
                         endpoint). Also used by the ASCOM console emulator
                         (--ascom-port) to decide when to refuse LOOP requests.
-                        Default: 60.
+                        Default: 300.
   --ascom-port ASCOM_PORT
                         TCP port emulating a real Davis console's legacy
                         serial protocol (wakeup/WRD/LOOP commands), for the
@@ -190,16 +190,16 @@ device's own error contract) whenever no real Davis packet has been
 received recently enough:
 
 ```json
-{"data": null, "error": "No sensor data received in the last 60s"}
+{"data": null, "error": "No sensor data received in the last 300s"}
 ```
 
 This is a deliberate fail-safe: rather than reporting fabricated calm/dry
 conditions when the receiver is stale or offline, the endpoint reports an
 error so a roof-close decision built on this data doesn't get told
 everything is fine when it might not be. The staleness threshold is
-configurable via `--weatherlink-stale-seconds` (default: `60`, comfortably
-covering one full Davis frequency-hop cycle at ~2.5s/hop plus an occasional
-missed packet).
+configurable via `--weatherlink-stale-seconds` (default: `300`, permissive
+enough to ride out several missed hops or a brief RF dropout without
+flapping to "unsafe" and back).
 
 `wind_speed_avg_last_2_min` and `wind_speed_hi_last_10_min` are computed
 from a real rolling window of every wind sample received over the radio
