@@ -143,8 +143,8 @@ class TestConsoleServerHandshake(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.05)
 
         joined = "\n".join(logs.output)
-        self.assertIn("client connected", joined)
-        self.assertIn("requested station type", joined)
+        self.assertIn("connection accepted", joined)
+        self.assertIn("station-type request", joined)
 
     async def test_loop_command_returns_ack_and_packet_when_fresh(self):
         self.window.record(10.0, timestamp=None)
@@ -167,7 +167,7 @@ class TestConsoleServerHandshake(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.05)
 
         joined = "\n".join(logs.output)
-        self.assertIn("requested LOOP data -> sent", joined)
+        self.assertIn("LOOP request -> ACK", joined)
 
     async def test_loop_command_closes_connection_without_ack_when_stale(self):
         # No samples recorded -> build_loop_packet returns None -> fail-safe refusal.
