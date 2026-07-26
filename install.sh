@@ -93,13 +93,27 @@ if [ ! -f "$CONFIG_FILE" ]; then
     cat <<EOF > "$CONFIG_FILE"
 # rtldavis Configuration
 
+# Radio backend: rtlsdr, cc1101, or dual (default: rtlsdr)
+# RTLDAVIS_RADIO=cc1101
+
+# CC1101 SPI wiring (only used when RTLDAVIS_RADIO is cc1101/dual)
+# RTLDAVIS_CC1101_SPI_BUS=0
+# RTLDAVIS_CC1101_SPI_DEVICE=1
+
+# Enable local BME280 I2C barometer / GPIO 5-way buttons (default: off)
+# RTLDAVIS_BME280=true
+# RTLDAVIS_BUTTONS=true
+
+# WebSocket server port (default: 8089)
+RTLDAVIS_WS_PORT=8089
+
 # RTL-SDR Device (serial or index, default: 0)
 RTLDAVIS_DEVICE="0"
 
-# Frequency Correction in PPM (default: 0)
+# Frequency Correction in PPM, RTL-SDR only (default: 0)
 RTLDAVIS_PPM=0
 
-# Tuner Gain (default: auto)
+# Tuner Gain, RTL-SDR only (default: auto)
 RTLDAVIS_GAIN="auto"
 
 # Disable frequency hopping (default: false)
@@ -145,13 +159,19 @@ EnvironmentFile=$CONFIG_FILE
 # Force usage of /usr/local/lib for newer librtlsdr
 Environment="LD_LIBRARY_PATH=/usr/local/lib"
 ExecStart=/bin/bash -c '$INSTALL_DIR/.venv/bin/python -m rtldavis \\
-    --rtlsdr-device "\${RTLDAVIS_DEVICE}" \\
-    --ppm "\${RTLDAVIS_PPM}" \\
-    --gain "\${RTLDAVIS_GAIN}" \\
+    \${RTLDAVIS_RADIO:+--radio "\${RTLDAVIS_RADIO}"} \\
+    \${RTLDAVIS_CC1101_SPI_BUS:+--cc1101-spi-bus "\${RTLDAVIS_CC1101_SPI_BUS}"} \\
+    \${RTLDAVIS_CC1101_SPI_DEVICE:+--cc1101-spi-device "\${RTLDAVIS_CC1101_SPI_DEVICE}"} \\
+    \${RTLDAVIS_BME280:+--bme280} \\
+    \${RTLDAVIS_BUTTONS:+--buttons} \\
+    --ws-port "\${RTLDAVIS_WS_PORT:-8089}" \\
+    \${RTLDAVIS_DEVICE:+--rtlsdr-device "\${RTLDAVIS_DEVICE}"} \\
+    \${RTLDAVIS_PPM:+--ppm "\${RTLDAVIS_PPM}"} \\
+    \${RTLDAVIS_GAIN:+--gain "\${RTLDAVIS_GAIN}"} \\
     \${RTLDAVIS_NO_HOP:+--no-hop} \\
     \${RTLDAVIS_VERBOSE:+-v} \\
     --mqtt-broker "\${RTLDAVIS_MQTT_BROKER}" \\
-    --mqtt-port "\${RTLDAVIS_MQTT_PORT}" \\
+    \${RTLDAVIS_MQTT_PORT:+--mqtt-port "\${RTLDAVIS_MQTT_PORT}"} \\
     --mqtt-username "\${RTLDAVIS_MQTT_USERNAME}" \\
     --mqtt-password "\${RTLDAVIS_MQTT_PASSWORD}" \\
     --mqtt-client-id "\${RTLDAVIS_MQTT_CLIENT_ID}" \\
