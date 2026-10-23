@@ -36,6 +36,7 @@ class Hopper:
                         self.packet_received_event.wait(), timeout=self.SCAN_TIMEOUT_S
                     )
                     self.packet_received_event.clear()
+                    sync_time = time.time()
                     break
                 except asyncio.TimeoutError:
                     self.logger.warning(
@@ -53,7 +54,11 @@ class Hopper:
             new_hop = self.p.next_hop()
             self.set_freq_callback(new_hop)
 
-            last_hop_time = time.time()
+            # Anchor the schedule to when the sync packet arrived, not to when
+            # we hopped. Using time.time() here would bake the 500ms sleep into
+            # every expected arrival, pushing drift to about -0.5s, right on
+            # the "too early" threshold, so real packets get rejected forever.
+            last_hop_time = sync_time
             missed_count = 0
 
             while True:
